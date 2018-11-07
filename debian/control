@@ -1,0 +1,64 @@
+Source: ndctl
+Maintainer: Breno Leitao <leitao@debian.org>
+Section: admin
+Priority: optional
+Standards-Version: 3.9.8
+Build-Depends: debhelper (>=9),
+               dh-autoreconf,
+               pkg-config,
+               libkmod-dev,
+               libudev-dev,
+               libuuid1,
+               uuid-dev,
+               libjson-c-dev,
+               asciidoctor
+Homepage: https://github.com/pmem/ndctl
+Vcs-Browser: https://github.com/leitao/ndctl_deb
+
+Package: ndctl
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: libraries for tool for 'libnvdimm'
+ ndctl is a utility for managing the "libnvdimm" kernel subsystem.
+ .
+ This includes provisioning capacity (namespaces) and enumerating,
+ enabling and disabling the devices associated with an NVDIMM bus.
+
+Package: libndctl6
+Architecture: any
+Section: libdevel
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: ndctl6 library used by ndctl tool
+ ndctl is a utility for managing the "libnvdimm" kernel subsystem.
+ .
+ This package provides libndctl librarie
+
+Package: libndctl6-dev
+Section: libdevel
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Development files for libndctl6
+ ndctl is a utility for managing the "libnvdimm" kernel subsystem.
+ .
+ Header file for libndctl, especifically:
+ /usr/include/ndctl/libndctl.h
+
+Package: libdaxctl1
+Architecture: any
+Section: libdevel
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: daxctl1 library used by ndctl
+ ndctl is a utility for managing the "libnvdimm" kernel subsystem.
+ .
+ This package provides libdaxctl librarie
+
+Package: libdaxctl1-dev
+Section: libdevel
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Development files for libdaxctl1
+ ndctl is a utility for managing the "libnvdimm" kernel subsystem.
+ .
+ Header files for libdaxctl, especifically:
+ /usr/include/daxctl/libdaxctl.h
+ /usr/include/ndctl/libdaxctl.h

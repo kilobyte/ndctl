@@ -10,7 +10,6 @@ TESTS =\
 	clear.sh \
 	pmem-errors.sh \
 	daxdev-errors.sh \
-	multi-dax.sh \
 	btt-check.sh \
 	label-compat.sh \
 	blk-exhaust.sh \

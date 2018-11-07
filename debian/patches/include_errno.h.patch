@@ -1,0 +1,17 @@
+Avoid the following error:
+
+	util/filter.c: In function ‘mode_to_type’:
+	util/filter.c:341:11: error: ‘ENXIO’ undeclared (first use in this function)
+	   return -ENXIO;
+		   ^~~~~
+
+--- ndctl-63.orig/util/filter.c
++++ ndctl-63/util/filter.c
+@@ -11,6 +11,7 @@
+  * General Public License for more details.
+  */
+ #include <stdio.h>
++#include <errno.h>
+ #include <string.h>
+ #include <stdlib.h>
+ #include <limits.h>

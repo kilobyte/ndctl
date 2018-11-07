@@ -1,0 +1,5 @@
+ndctl (63-1) unstable; urgency=medium
+
+  * Initial release. (Closes: #829257)
+
+ -- Breno Leitao <leitao@debian.org>  Wed, 07 Nov 2018 14:00:33 -0500

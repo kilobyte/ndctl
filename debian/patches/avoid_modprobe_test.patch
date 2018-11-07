@@ -1,0 +1,10 @@
+--- a/test/Makefile.am	2018-11-01 08:32:18.957496959 -0400
++++ b/test/Makefile.am	2018-11-01 08:32:27.817548678 -0400
+@@ -10,7 +10,6 @@ TESTS =\
+ 	clear.sh \
+ 	pmem-errors.sh \
+ 	daxdev-errors.sh \
+-	multi-dax.sh \
+ 	btt-check.sh \
+ 	label-compat.sh \
+ 	blk-exhaust.sh \

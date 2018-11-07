@@ -11,6 +11,7 @@
  * General Public License for more details.
  */
 #include <stdio.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
