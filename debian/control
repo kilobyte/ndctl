@@ -11,6 +11,8 @@ Build-Depends: debhelper (>=9),
                libuuid1,
                uuid-dev,
                libjson-c-dev,
+               bash-completion,
+               systemd,
                asciidoctor
 Homepage: https://github.com/pmem/ndctl
 Vcs-Browser: https://github.com/leitao/ndctl_deb
@@ -37,6 +39,7 @@ Package: libndctl6-dev
 Section: libdevel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Provides: libndctl-dev
 Description: Development files for libndctl6
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .
@@ -56,6 +59,7 @@ Package: libdaxctl1-dev
 Section: libdevel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Provides: libdaxctl-dev
 Description: Development files for libdaxctl1
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .

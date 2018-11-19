@@ -1,3 +1,4 @@
-/usr/include/daxctl/libdaxctl.h
-/usr/include/ndctl/libdaxctl.h
-/usr/lib/*/libdaxctl.so
+usr/include/daxctl/libdaxctl.h
+usr/include/ndctl/libdaxctl.h
+usr/lib/*/libdaxctl.so
+usr/lib/*/pkgconfig/libdaxctl.pc

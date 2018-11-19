@@ -1,3 +1,13 @@
+ndctl (63-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Make debian/copyright betterer. (Closes: #913713)
+  * Fix FTBFS on all architectures. (Closes: #913808)
+  * Install pkg-config files, make dh_missing fail. (Closes: #913809, #913737)
+  * Add provides for soname-less -dev packages. (Closes: #913887)
+
+ -- Adam Borowski <kilobyte@angband.pl>  Mon, 19 Nov 2018 13:54:10 +0100
+
 ndctl (63-1) unstable; urgency=medium
 
   * Initial release. (Closes: #829257)

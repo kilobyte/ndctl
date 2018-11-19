@@ -1,2 +1,4 @@
-/usr/bin/*
-/usr/share/*
+etc/ndctl
+lib/systemd
+usr/bin/*
+usr/share/*

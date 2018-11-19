@@ -1,2 +1,4 @@
-/usr/include/ndctl/libndctl.h
-/usr/lib/powerpc64le-linux-gnu/libndctl.so
+usr/include/ndctl/ndctl.h
+usr/include/ndctl/libndctl.h
+usr/lib/*/libndctl.so
+usr/lib/*/pkgconfig/libndctl.pc
