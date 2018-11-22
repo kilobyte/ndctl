@@ -1,4 +1,4 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ndctl
 Source: https://github.com/pmem/ndctl
 
@@ -10,7 +10,7 @@ Files:     debian/*
 Copyright: Copyright(c) 2017 Breno Leitão. All rights reserved
 License:   GPL-2
 
-Files: 	   daxctl/daxctl.c
+Files:     daxctl/daxctl.c
            ndctl/ndctl.c
 Copyright: Copyright(c) 2015-2017 Intel Corporation. All rights reserved.
            Copyright(c) 2005 Andreas Ericsson. All rights reserved.

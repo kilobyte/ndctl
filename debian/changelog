@@ -1,3 +1,14 @@
+ndctl (63-1.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Fix missing dependency from -dev packages to their shared libraries
+  * Bump debhelper compat to 11
+  * Use symbols files
+  * Use versioned provides for the soname-less -dev package names
+  * Fix several minor Lintian issues
+
+ -- Jeremy Bicha <jbicha@debian.org>  Thu, 22 Nov 2018 07:37:03 -0500
+
 ndctl (63-1.1) unstable; urgency=medium
 
   * Non-maintainer upload.

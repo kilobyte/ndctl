@@ -3,8 +3,7 @@ Maintainer: Breno Leitao <leitao@debian.org>
 Section: admin
 Priority: optional
 Standards-Version: 3.9.8
-Build-Depends: debhelper (>=9),
-               dh-autoreconf,
+Build-Depends: debhelper (>= 11),
                pkg-config,
                libkmod-dev,
                libudev-dev,
@@ -28,41 +27,40 @@ Description: libraries for tool for 'libnvdimm'
 
 Package: libndctl6
 Architecture: any
-Section: libdevel
+Section: libs
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: ndctl6 library used by ndctl tool
+Description: ndctl library used by ndctl tool
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .
- This package provides libndctl librarie
+ This package provides the libndctl library.
 
 Package: libndctl6-dev
 Section: libdevel
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Provides: libndctl-dev
-Description: Development files for libndctl6
+Depends: libndctl6 (= ${binary:Version}), ${misc:Depends}
+Provides: libndctl-dev (= ${binary:Version})
+Description: Development files for libndctl
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .
- Header file for libndctl, especifically:
- /usr/include/ndctl/libndctl.h
+ This package contains the headers and development libraries needed to
+ build applications using the libndctl library.
 
 Package: libdaxctl1
 Architecture: any
-Section: libdevel
+Section: libs
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: daxctl1 library used by ndctl
+Description: daxctl library used by ndctl
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .
- This package provides libdaxctl librarie
+ This package provides the libdaxctl library.
 
 Package: libdaxctl1-dev
 Section: libdevel
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Provides: libdaxctl-dev
-Description: Development files for libdaxctl1
+Depends: libdaxctl1 (= ${binary:Version}), ${misc:Depends}
+Provides: libdaxctl-dev (= ${binary:Version})
+Description: Development files for libdaxctl
  ndctl is a utility for managing the "libnvdimm" kernel subsystem.
  .
- Header files for libdaxctl, especifically:
- /usr/include/daxctl/libdaxctl.h
- /usr/include/ndctl/libdaxctl.h
+ This package contains the headers and development libraries needed to
+ build applications using the libdaxctl library.
