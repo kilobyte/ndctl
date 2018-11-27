@@ -1,4 +1,5 @@
 etc/ndctl
 lib/systemd
-usr/bin/*
-usr/share/*
+usr/bin/ndctl
+usr/share/bash-completion/completions/ndctl
+usr/share/man/man1/ndctl*

@@ -1,5 +1,5 @@
 libdaxctl.so.1 libdaxctl1 #MINVER#
-* Build-Depends-Package: libdaxctl1-dev
+* Build-Depends-Package: libdaxctl-dev
  LIBDAXCTL_1@LIBDAXCTL_1 63
  LIBDAXCTL_2@LIBDAXCTL_2 63
  LIBDAXCTL_3@LIBDAXCTL_3 63

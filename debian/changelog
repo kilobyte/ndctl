@@ -1,3 +1,20 @@
+ndctl (63-1.3) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Incorporate several fixes from Ubuntu (Closes: #914797) (LP: #1804725)
+    - Don't include the version in -dev package names (Closes: #913887)
+    - Split daxctl to a separate package
+    - Add autopkgtests
+    - Add Breaks/Replaces for moved header file
+    - Don't directly Build-Depend on libuuid1
+    - Add README files from Ubuntu
+    - Use Ubuntu's debian/copyright to avoid Lintian warnings
+    - Use Ubuntu's package descriptions
+    - Also clean up test/test_dax_data created by tests
+    - Bump Standards-Version to 4.2.1
+
+ -- Jeremy Bicha <jbicha@debian.org>  Tue, 27 Nov 2018 08:31:54 -0500
+
 ndctl (63-1.2) unstable; urgency=medium
 
   * Non-maintainer upload.

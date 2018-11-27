@@ -1,5 +1,5 @@
 libndctl.so.6 libndctl6 #MINVER#
-* Build-Depends-Package: libndctl6-dev
+* Build-Depends-Package: libndctl-dev
  LIBNDCTL_13@LIBNDCTL_13 63
  LIBNDCTL_14@LIBNDCTL_14 63
  LIBNDCTL_15@LIBNDCTL_15 63
