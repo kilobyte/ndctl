@@ -1,2 +1,3 @@
 usr/bin/daxctl
+usr/share/daxctl/daxctl.conf
 usr/share/man/man1/daxctl*
