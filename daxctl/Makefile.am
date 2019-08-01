@@ -21,4 +21,5 @@ daxctl_LDADD =\
 	lib/libdaxctl.la \
 	../libutil.a \
 	$(UUID_LIBS) \
-	$(JSON_LIBS)
+	$(JSON_LIBS) \
+	../ndctl/lib/libndctl.la
