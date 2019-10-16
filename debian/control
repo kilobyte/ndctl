@@ -19,7 +19,7 @@ Vcs-Browser: https://github.com/leitao/ndctl_deb
 
 Package: ndctl
 Section: misc
-Architecture: any
+Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Utility for managing the nvdimm subsystem
  The nvdimm subsystem defines a kernel device model and control message
@@ -30,7 +30,7 @@ Description: Utility for managing the nvdimm subsystem
  device) subsystem in the Linux kernel.
 
 Package: libndctl6
-Architecture: any
+Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Utility library for managing the libnvdimm subsystem
  The nvdimm subsystem defines a kernel device model and control message
@@ -42,7 +42,7 @@ Description: Utility library for managing the libnvdimm subsystem
 
 Package: libndctl-dev
 Section: libdevel
-Architecture: any
+Architecture: linux-any
 Depends: libndctl6 (= ${binary:Version}), ${misc:Depends}
 Description: Development files for libndctl
  Header files and development library for compiling C programs to link
@@ -51,7 +51,7 @@ Description: Development files for libndctl
 
 Package: daxctl
 Section: misc
-Architecture: any
+Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Breaks: ndctl (<< 63-1.3~)
 Replaces: ndctl (<< 63-1.3~)
@@ -64,7 +64,7 @@ Description: Utility for managing the device DAX subsystem
  Linux kernel.
 
 Package: libdaxctl1
-Architecture: any
+Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Utility library for managing the device DAX subsystem
  "DAX" are file system extensions to bypass the page cache and block layer to
@@ -76,7 +76,7 @@ Description: Utility library for managing the device DAX subsystem
 
 Package: libdaxctl-dev
 Section: libdevel
-Architecture: any
+Architecture: linux-any
 Depends: libdaxctl1 (= ${binary:Version}), ${misc:Depends}
 Breaks: libndctl-dev (<< 63-1.3~)
 Replaces: libndctl-dev (<< 63-1.3~)
