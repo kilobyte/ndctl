@@ -35,6 +35,9 @@ override_dh_clean:
 	rm -fr config.log
 	dh_clean
 
+override_dh_installinit:
+	dh_installinit -p ndctl --init-script=ndctl-monitor
+
 override_dh_install:
 	find debian/tmp -name '*.la' -print -delete
 	dh_install
