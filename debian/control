@@ -23,6 +23,7 @@ Section: misc
 Architecture: linux-any
 Multi-Arch: foreign
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Pre-Depends: ${misc:Pre-Depends}
 Description: Utility for managing the nvdimm subsystem
  The nvdimm subsystem defines a kernel device model and control message
  interface for platform NVDIMM resources like those defined by the ACPI 6+ NFIT
