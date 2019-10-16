@@ -1,3 +1,18 @@
+ndctl (66-1) unstable; urgency=medium
+
+  * New upstream release.
+  * New maintainer, thanks Breno for your work!
+  * dh 12, R³.
+  * Update library symbols.
+  * Fix FTBFS on a bunch of doorstop architectures. (Closes: #914348)
+  * Set arch to linux-any.
+  * Add Multi-Arch settings. (Closes: #941029)
+  * Set Vcs-Git links. (Closes: #933606)
+  * Add an init script for ndctl-monitor. (Closes: #933624)
+  * Drop old patches.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Wed, 16 Oct 2019 16:22:04 +0200
+
 ndctl (65-1) unstable; urgency=medium
 
   * New upstream release
