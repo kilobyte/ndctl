@@ -89,7 +89,7 @@ static int region_action(struct ndctl_region *region, enum device_action mode)
 		break;
 	}
 
-	return 0;
+	return rc;
 }
 
 static int do_xable_region(const char *region_arg, enum device_action mode,
@@ -124,7 +124,7 @@ static int do_xable_region(const char *region_arg, enum device_action mode,
 	return rc;
 }
 
-int cmd_disable_region(int argc, const char **argv, void *ctx)
+int cmd_disable_region(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl disable-region <region> [<options>]";
 	const char *region = parse_region_options(argc, argv, xable_usage);
@@ -144,7 +144,7 @@ int cmd_disable_region(int argc, const char **argv, void *ctx)
 	}
 }
 
-int cmd_enable_region(int argc, const char **argv, void *ctx)
+int cmd_enable_region(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl enable-region <region> [<options>]";
 	const char *region = parse_region_options(argc, argv, xable_usage);

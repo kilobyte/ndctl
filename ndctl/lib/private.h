@@ -31,6 +31,7 @@
 #include "intel.h"
 #include "hpe1.h"
 #include "msft.h"
+#include "hyperv.h"
 
 struct nvdimm_data {
 	struct ndctl_cmd *cmd_read;
@@ -270,6 +271,7 @@ struct ndctl_cmd {
 		struct nd_cmd_pkg pkg[0];
 		struct ndn_pkg_hpe1 hpe1[0];
 		struct ndn_pkg_msft msft[0];
+		struct nd_pkg_hyperv hyperv[0];
 		struct nd_pkg_intel intel[0];
 		struct nd_cmd_get_config_size get_size[0];
 		struct nd_cmd_get_config_data_hdr get_data[0];
@@ -290,6 +292,7 @@ struct ndctl_bb {
 
 struct ndctl_dimm_ops {
 	const char *(*cmd_desc)(int);
+	bool (*cmd_is_supported)(struct ndctl_dimm *, int);
 	struct ndctl_cmd *(*new_smart)(struct ndctl_dimm *);
 	unsigned int (*smart_get_flags)(struct ndctl_cmd *);
 	unsigned int (*smart_get_health)(struct ndctl_cmd *);
@@ -338,11 +341,13 @@ struct ndctl_dimm_ops {
 	enum ND_FW_STATUS (*fw_xlat_firmware_status)(struct ndctl_cmd *);
 	struct ndctl_cmd *(*new_ack_shutdown_count)(struct ndctl_dimm *);
 	int (*fw_update_supported)(struct ndctl_dimm *);
+	int (*xlat_firmware_status)(struct ndctl_cmd *);
 };
 
 struct ndctl_dimm_ops * const intel_dimm_ops;
 struct ndctl_dimm_ops * const hpe1_dimm_ops;
 struct ndctl_dimm_ops * const msft_dimm_ops;
+struct ndctl_dimm_ops * const hyperv_dimm_ops;
 
 static inline struct ndctl_bus *cmd_to_bus(struct ndctl_cmd *cmd)
 {

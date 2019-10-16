@@ -36,10 +36,10 @@ static bool verbose;
 static bool force;
 static bool repair;
 static bool logfix;
+static bool scrub;
 static struct parameters {
 	bool do_scan;
 	bool mode_default;
-	bool align_default;
 	bool autolabel;
 	const char *bus;
 	const char *map;
@@ -121,6 +121,9 @@ OPT_BOOLEAN('R', "repair", &repair, "perform metadata repairs"), \
 OPT_BOOLEAN('L', "rewrite-log", &logfix, "regenerate the log"), \
 OPT_BOOLEAN('f', "force", &force, "check namespace even if currently active")
 
+#define CLEAR_OPTIONS() \
+OPT_BOOLEAN('s', "scrub", &scrub, "run a scrub to find latent errors")
+
 static const struct option base_options[] = {
 	BASE_OPTIONS(),
 	OPT_END(),
@@ -142,6 +145,12 @@ static const struct option create_options[] = {
 static const struct option check_options[] = {
 	BASE_OPTIONS(),
 	CHECK_OPTIONS(),
+	OPT_END(),
+};
+
+static const struct option clear_options[] = {
+	BASE_OPTIONS(),
+	CLEAR_OPTIONS(),
 	OPT_END(),
 };
 
@@ -226,9 +235,6 @@ static int set_defaults(enum device_action mode)
 		error("failed to parse namespace alignment '%s'\n",
 				param.align);
 		rc = -EINVAL;
-	} else if (!param.align) {
-		param.align = "2M";
-		param.align_default = true;
 	}
 
 	if (param.uuid) {
@@ -288,6 +294,9 @@ static const char *parse_namespace_options(int argc, const char **argv,
 				break;
 			case ACTION_CHECK:
 				action_string = "check";
+				break;
+			case ACTION_CLEAR:
+				action_string = "clear errors for";
 				break;
 			default:
 				action_string = "<>";
@@ -394,6 +403,8 @@ static int setup_namespace(struct ndctl_region *region,
 			try(ndctl_pfn, set_align, pfn, p->align);
 		try(ndctl_pfn, set_namespace, pfn, ndns);
 		rc = ndctl_pfn_enable(pfn);
+		if (rc)
+			ndctl_pfn_set_namespace(pfn, NULL);
 	} else if (p->mode == NDCTL_NS_MODE_DAX) {
 		struct ndctl_dax *dax = ndctl_region_get_dax_seed(region);
 
@@ -403,6 +414,8 @@ static int setup_namespace(struct ndctl_region *region,
 		try(ndctl_dax, set_align, dax, p->align);
 		try(ndctl_dax, set_namespace, dax, ndns);
 		rc = ndctl_dax_enable(dax);
+		if (rc)
+			ndctl_dax_set_namespace(dax, NULL);
 	} else if (p->mode == NDCTL_NS_MODE_SAFE) {
 		struct ndctl_btt *btt = ndctl_region_get_btt_seed(region);
 
@@ -424,7 +437,7 @@ static int setup_namespace(struct ndctl_region *region,
 		error("%s: failed to enable\n",
 				ndctl_namespace_get_devname(ndns));
 	} else {
-		unsigned long flags = UTIL_JSON_DAX | UTIL_JSON_DAX_DEVS | UTIL_JSON_VERBOSE;
+		unsigned long flags = UTIL_JSON_DAX | UTIL_JSON_DAX_DEVS;
 		struct json_object *jndns;
 
 		if (isatty(1))
@@ -464,7 +477,9 @@ static int validate_namespace_options(struct ndctl_region *region,
 		struct ndctl_namespace *ndns, struct parsed_parameters *p)
 {
 	const char *region_name = ndctl_region_get_devname(region);
-	unsigned long long size_align = SZ_4K, units = 1, resource;
+	unsigned long long size_align, units = 1, resource;
+	struct ndctl_pfn *pfn = NULL;
+	struct ndctl_dax *dax = NULL;
 	unsigned int ways;
 	int rc = 0;
 
@@ -521,76 +536,105 @@ static int validate_namespace_options(struct ndctl_region *region,
 	} else if (ndns)
 		p->mode = ndctl_namespace_get_mode(ndns);
 
+	if (p->mode == NDCTL_NS_MODE_MEMORY) {
+		pfn = ndctl_region_get_pfn_seed(region);
+		if (!pfn && param.mode_default) {
+			debug("%s fsdax mode not available\n", region_name);
+			p->mode = NDCTL_NS_MODE_RAW;
+		}
+		/*
+		 * NB: We only fail validation if a pfn-specific option is used
+		 */
+	} else if (p->mode == NDCTL_NS_MODE_DAX) {
+		dax = ndctl_region_get_dax_seed(region);
+		if (!dax) {
+			error("Kernel does not support devdax mode\n");
+			return -ENODEV;
+		}
+	}
+
 	if (param.align) {
-		struct ndctl_pfn *pfn = ndctl_region_get_pfn_seed(region);
-		struct ndctl_dax *dax = ndctl_region_get_dax_seed(region);
+		int i, alignments;
 
-		p->align = parse_size64(param.align);
+		switch (p->mode) {
+		case NDCTL_NS_MODE_MEMORY:
+			if (!pfn) {
+				error("Kernel does not support setting an alignment in fsdax mode\n");
+				return -EINVAL;
+			}
 
-		if (p->mode == NDCTL_NS_MODE_MEMORY && p->align != SZ_2M
-				&& (!pfn || !ndctl_pfn_has_align(pfn))) {
-			/*
-			 * Initial pfn device support in the kernel
-			 * supported a 2M default alignment when
-			 * ndctl_pfn_has_align() returns false.
-			 */
-			debug("%s not support 'align' for fsdax mode\n",
-					region_name);
-			return -EAGAIN;
-		} else if (p->mode == NDCTL_NS_MODE_DAX
-				&& (!dax || !ndctl_dax_has_align(dax))) {
-			/*
-			 * Unlike the pfn case, we require the kernel to
-			 * have 'align' support for device-dax.
-			 */
-			debug("%s not support 'align' for devdax mode\n",
-					region_name);
-			return -EAGAIN;
-		} else if (!param.align_default
-				&& (p->mode == NDCTL_NS_MODE_SAFE
-					|| p->mode == NDCTL_NS_MODE_RAW)) {
-			/*
-			 * Specifying an alignment has no effect for
-			 * raw, or btt mode namespaces.
-			 */
+			alignments = ndctl_pfn_get_num_alignments(pfn);
+			break;
+
+		case NDCTL_NS_MODE_DAX:
+			alignments = ndctl_dax_get_num_alignments(dax);
+			break;
+
+		default:
 			error("%s mode does not support setting an alignment\n",
 					p->mode == NDCTL_NS_MODE_SAFE
 					? "sector" : "raw");
 			return -ENXIO;
 		}
 
-		/*
-		 * Fallback to a 4K default alignment if the region is
-		 * not 2MB (typical default) aligned. This mainly helps
-		 * the nfit_test use case where it is backed by vmalloc
-		 * memory.
-		 */
-		resource = ndctl_region_get_resource(region);
-		if (param.align_default && resource < ULLONG_MAX
-				&& (resource & (SZ_2M - 1))) {
-			debug("%s: falling back to a 4K alignment\n",
-					region_name);
-			p->align = SZ_4K;
+		p->align = parse_size64(param.align);
+		for (i = 0; i < alignments; i++) {
+			uint64_t a;
+
+			if (p->mode == NDCTL_NS_MODE_MEMORY)
+				a = ndctl_pfn_get_supported_alignment(pfn, i);
+			else
+				a = ndctl_dax_get_supported_alignment(dax, i);
+
+			if (p->align == a)
+				break;
 		}
 
-		switch (p->align) {
-		case SZ_4K:
-		case SZ_2M:
-		case SZ_1G:
-			break;
-		default:
+		if (i >= alignments) {
 			error("unsupported align: %s\n", param.align);
 			return -ENXIO;
 		}
+	} else {
+		/*
+		 * Use the seed namespace alignment as the default if we need
+		 * one. If we don't then use PAGE_SIZE so the size_align
+		 * checking works.
+		 */
+		if (p->mode == NDCTL_NS_MODE_MEMORY) {
+			/*
+			 * The initial pfn device support in the kernel didn't
+			 * have the 'align' sysfs attribute and assumed a 2MB
+			 * alignment. Fall back to that if we don't have the
+			 * attribute.
+			 */
+			if (pfn && ndctl_pfn_has_align(pfn))
+				p->align = ndctl_pfn_get_align(pfn);
+			else
+				p->align = SZ_2M;
+		} else if (p->mode == NDCTL_NS_MODE_DAX) {
+			/*
+			 * device dax mode was added after the align attribute
+			 * so checking for it is unnecessary.
+			 */
+			p->align = ndctl_dax_get_align(dax);
+		} else {
+			p->align = sysconf(_SC_PAGE_SIZE);
+		}
 
 		/*
-		 * 'raw' and 'sector' mode namespaces don't support an
-		 * alignment attribute.
+		 * Fallback to a page alignment if the region is not aligned
+		 * to the default. This is mainly useful for the nfit_test
+		 * use case where it is backed by vmalloc memory.
 		 */
-		if (p->mode == NDCTL_NS_MODE_MEMORY
-				|| p->mode == NDCTL_NS_MODE_DAX)
-			size_align = p->align;
+		resource = ndctl_region_get_resource(region);
+		if (resource < ULLONG_MAX && (resource & (p->align - 1))) {
+			debug("%s: falling back to a page alignment\n",
+					region_name);
+			p->align = sysconf(_SC_PAGE_SIZE);
+		}
 	}
+
+	size_align = p->align;
 
 	/* (re-)validate that the size satisfies the alignment */
 	ways = ndctl_region_get_interleave_ways(region);
@@ -617,8 +661,8 @@ static int validate_namespace_options(struct ndctl_region *region,
 		p->size *= size_align;
 		p->size /= units;
 		error("'--size=' must align to interleave-width: %d and alignment: %ld\n"
-				"  did you intend --size=%lld%s?\n", ways, param.align
-				? p->align : SZ_4K, p->size, suffix);
+				"did you intend --size=%lld%s?\n",
+				ways, p->align, p->size, suffix);
 		return -EINVAL;
 	}
 
@@ -705,30 +749,12 @@ static int validate_namespace_options(struct ndctl_region *region,
 			|| p->mode == NDCTL_NS_MODE_DAX)
 		p->loc = NDCTL_PFN_LOC_PMEM;
 
-	/* check if we need, and whether the kernel supports, pfn devices */
-	if (do_setup_pfn(ndns, p)) {
-		struct ndctl_pfn *pfn = ndctl_region_get_pfn_seed(region);
-
-		if (!pfn && param.mode_default) {
-			debug("%s fsdax mode not available\n", region_name);
-			p->mode = NDCTL_NS_MODE_RAW;
-		} else if (!pfn) {
-			error("operation failed, %s fsdax mode not available\n",
-					region_name);
-			return -EINVAL;
-		}
+	if (!pfn && do_setup_pfn(ndns, p)) {
+		error("operation failed, %s cannot support requested mode\n",
+			region_name);
+		return -EINVAL;
 	}
 
-	/* check if we need, and whether the kernel supports, dax devices */
-	if (p->mode == NDCTL_NS_MODE_DAX) {
-		struct ndctl_dax *dax = ndctl_region_get_dax_seed(region);
-
-		if (!dax) {
-			error("operation failed, %s devdax mode not available\n",
-					region_name);
-			return -EINVAL;
-		}
-	}
 
 	p->autolabel = param.autolabel;
 
@@ -784,7 +810,13 @@ static int namespace_create(struct ndctl_region *region)
 		return -ENODEV;
 	}
 
-	return setup_namespace(region, ndns, &p);
+	rc = setup_namespace(region, ndns, &p);
+	if (rc) {
+		ndctl_namespace_set_enforce_mode(ndns, NDCTL_NS_MODE_RAW);
+		ndctl_namespace_delete(ndns);
+	}
+
+	return rc;
 }
 
 /*
@@ -1032,6 +1064,255 @@ static int namespace_reconfig(struct ndctl_region *region,
 int namespace_check(struct ndctl_namespace *ndns, bool verbose, bool force,
 		bool repair, bool logfix);
 
+static int bus_send_clear(struct ndctl_bus *bus, unsigned long long start,
+		unsigned long long size)
+{
+	const char *busname = ndctl_bus_get_provider(bus);
+	struct ndctl_cmd *cmd_cap, *cmd_clear;
+	unsigned long long cleared;
+	struct ndctl_range range;
+	int rc;
+
+	/* get ars_cap */
+	cmd_cap = ndctl_bus_cmd_new_ars_cap(bus, start, size);
+	if (!cmd_cap) {
+		debug("bus: %s failed to create cmd\n", busname);
+		return -ENOTTY;
+	}
+
+	rc = ndctl_cmd_submit_xlat(cmd_cap);
+	if (rc < 0) {
+		debug("bus: %s failed to submit cmd: %d\n", busname, rc);
+		goto out_cap;
+	}
+
+	/* send clear_error */
+	if (ndctl_cmd_ars_cap_get_range(cmd_cap, &range)) {
+		debug("bus: %s failed to get ars_cap range\n", busname);
+		rc = -ENXIO;
+		goto out_cap;
+	}
+
+	cmd_clear = ndctl_bus_cmd_new_clear_error(range.address,
+					range.length, cmd_cap);
+	if (!cmd_clear) {
+		debug("bus: %s failed to create cmd\n", busname);
+		rc = -ENOTTY;
+		goto out_cap;
+	}
+
+	rc = ndctl_cmd_submit_xlat(cmd_clear);
+	if (rc < 0) {
+		debug("bus: %s failed to submit cmd: %d\n", busname, rc);
+		goto out_clr;
+	}
+
+	cleared = ndctl_cmd_clear_error_get_cleared(cmd_clear);
+	if (cleared != range.length) {
+		debug("bus: %s expected to clear: %lld actual: %lld\n",
+				busname, range.length, cleared);
+		rc = -ENXIO;
+	}
+
+out_clr:
+	ndctl_cmd_unref(cmd_clear);
+out_cap:
+	ndctl_cmd_unref(cmd_cap);
+	return rc;
+}
+
+static int nstype_clear_badblocks(struct ndctl_namespace *ndns,
+		const char *devname, unsigned long long dev_begin,
+		unsigned long long dev_size)
+{
+	struct ndctl_region *region = ndctl_namespace_get_region(ndns);
+	struct ndctl_bus *bus = ndctl_region_get_bus(region);
+	unsigned long long region_begin, dev_end;
+	unsigned int cleared = 0;
+	struct badblock *bb;
+	int rc = 0;
+
+	region_begin = ndctl_region_get_resource(region);
+	if (region_begin == ULLONG_MAX) {
+		rc = -errno;
+		if (ndctl_namespace_enable(ndns) < 0)
+			error("%s: failed to reenable namespace\n", devname);
+		return rc;
+	}
+
+	dev_end = dev_begin + dev_size - 1;
+
+	ndctl_region_badblock_foreach(region, bb) {
+		unsigned long long bb_begin, bb_end, bb_len;
+
+		bb_begin = region_begin + (bb->offset << 9);
+		bb_len = (unsigned long long)bb->len << 9;
+		bb_end = bb_begin + bb_len - 1;
+
+		/* bb is not fully contained in the usable area */
+		if (bb_begin < dev_begin || bb_end > dev_end)
+			continue;
+
+		rc = bus_send_clear(bus, bb_begin, bb_len);
+		if (rc) {
+			error("%s: failed to clear badblock at {%lld, %u}\n",
+				devname, bb->offset, bb->len);
+			break;
+		}
+		cleared += bb->len;
+	}
+	debug("%s: cleared %u badblocks\n", devname, cleared);
+
+	rc = ndctl_namespace_enable(ndns);
+	if (rc < 0)
+		return rc;
+	return 0;
+}
+
+static int dax_clear_badblocks(struct ndctl_dax *dax)
+{
+	struct ndctl_namespace *ndns = ndctl_dax_get_namespace(dax);
+	const char *devname = ndctl_dax_get_devname(dax);
+	unsigned long long begin, size;
+	int rc;
+
+	begin = ndctl_dax_get_resource(dax);
+	if (begin == ULLONG_MAX)
+		return -ENXIO;
+
+	size = ndctl_dax_get_size(dax);
+	if (size == ULLONG_MAX)
+		return -ENXIO;
+
+	rc = ndctl_namespace_disable_safe(ndns);
+	if (rc) {
+		error("%s: unable to disable namespace: %s\n", devname,
+			strerror(-rc));
+		return rc;
+	}
+	return nstype_clear_badblocks(ndns, devname, begin, size);
+}
+
+static int pfn_clear_badblocks(struct ndctl_pfn *pfn)
+{
+	struct ndctl_namespace *ndns = ndctl_pfn_get_namespace(pfn);
+	const char *devname = ndctl_pfn_get_devname(pfn);
+	unsigned long long begin, size;
+	int rc;
+
+	begin = ndctl_pfn_get_resource(pfn);
+	if (begin == ULLONG_MAX)
+		return -ENXIO;
+
+	size = ndctl_pfn_get_size(pfn);
+	if (size == ULLONG_MAX)
+		return -ENXIO;
+
+	rc = ndctl_namespace_disable_safe(ndns);
+	if (rc) {
+		error("%s: unable to disable namespace: %s\n", devname,
+			strerror(-rc));
+		return rc;
+	}
+	return nstype_clear_badblocks(ndns, devname, begin, size);
+}
+
+static int raw_clear_badblocks(struct ndctl_namespace *ndns)
+{
+	const char *devname = ndctl_namespace_get_devname(ndns);
+	unsigned long long begin, size;
+	int rc;
+
+	begin = ndctl_namespace_get_resource(ndns);
+	if (begin == ULLONG_MAX)
+		return -ENXIO;
+
+	size = ndctl_namespace_get_size(ndns);
+	if (size == ULLONG_MAX)
+		return -ENXIO;
+
+	rc = ndctl_namespace_disable_safe(ndns);
+	if (rc) {
+		error("%s: unable to disable namespace: %s\n", devname,
+			strerror(-rc));
+		return rc;
+	}
+	return nstype_clear_badblocks(ndns, devname, begin, size);
+}
+
+static int namespace_wait_scrub(struct ndctl_namespace *ndns)
+{
+	const char *devname = ndctl_namespace_get_devname(ndns);
+	struct ndctl_bus *bus = ndctl_namespace_get_bus(ndns);
+	int in_progress, rc;
+
+	in_progress = ndctl_bus_get_scrub_state(bus);
+	if (in_progress < 0) {
+		error("%s: Unable to determine scrub state: %s\n", devname,
+				strerror(-in_progress));
+		return in_progress;
+	}
+
+	/* start a scrub if asked and if one isn't in progress */
+	if (scrub && (!in_progress)) {
+		rc = ndctl_bus_start_scrub(bus);
+		if (rc) {
+			error("%s: Unable to start scrub: %s\n", devname,
+					strerror(-rc));
+			return rc;
+		}
+	}
+
+	/*
+	 * wait for any in-progress scrub, whether started above, or
+	 * started automatically at boot time
+	 */
+	rc = ndctl_bus_wait_for_scrub_completion(bus);
+	if (rc) {
+		error("%s: Error waiting for scrub: %s\n", devname,
+				strerror(-rc));
+		return rc;
+	}
+
+	return 0;
+}
+
+static int namespace_clear_bb(struct ndctl_namespace *ndns)
+{
+	struct ndctl_pfn *pfn = ndctl_namespace_get_pfn(ndns);
+	struct ndctl_dax *dax = ndctl_namespace_get_dax(ndns);
+	struct ndctl_btt *btt = ndctl_namespace_get_btt(ndns);
+	struct json_object *jndns;
+	int rc;
+
+	if (btt) {
+		/* skip btt error clearing for now */
+		debug("%s: skip error clearing for btt\n",
+				ndctl_btt_get_devname(btt));
+		return 1;
+	}
+
+	rc = namespace_wait_scrub(ndns);
+	if (rc)
+		return rc;
+
+	if (dax)
+		rc = dax_clear_badblocks(dax);
+	else if (pfn)
+		rc = pfn_clear_badblocks(pfn);
+	else
+		rc = raw_clear_badblocks(ndns);
+
+	if (rc)
+		return rc;
+
+	jndns = util_namespace_to_json(ndns, UTIL_JSON_MEDIA_ERRORS);
+	if (jndns)
+		printf("%s\n", json_object_to_json_string_ext(jndns,
+				JSON_C_TO_STRING_PRETTY));
+	return 0;
+}
+
 static int do_xaction_namespace(const char *namespace,
 		enum device_action action, struct ndctl_ctx *ctx,
 		int *processed)
@@ -1112,6 +1393,11 @@ static int do_xaction_namespace(const char *namespace,
 					if (rc == 0)
 						(*processed)++;
 					break;
+				case ACTION_CLEAR:
+					rc = namespace_clear_bb(ndns);
+					if (rc == 0)
+						(*processed)++;
+					break;
 				case ACTION_CREATE:
 					rc = namespace_reconfig(region, ndns);
 					if (rc == 0)
@@ -1128,7 +1414,7 @@ static int do_xaction_namespace(const char *namespace,
 	return rc;
 }
 
-int cmd_disable_namespace(int argc, const char **argv, void *ctx)
+int cmd_disable_namespace(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl disable-namespace <namespace> [<options>]";
 	const char *namespace = parse_namespace_options(argc, argv,
@@ -1145,7 +1431,7 @@ int cmd_disable_namespace(int argc, const char **argv, void *ctx)
 	return rc;
 }
 
-int cmd_enable_namespace(int argc, const char **argv, void *ctx)
+int cmd_enable_namespace(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl enable-namespace <namespace> [<options>]";
 	const char *namespace = parse_namespace_options(argc, argv,
@@ -1161,7 +1447,7 @@ int cmd_enable_namespace(int argc, const char **argv, void *ctx)
 	return rc;
 }
 
-int cmd_create_namespace(int argc, const char **argv, void *ctx)
+int cmd_create_namespace(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl create-namespace [<options>]";
 	const char *namespace = parse_namespace_options(argc, argv,
@@ -1190,7 +1476,7 @@ int cmd_create_namespace(int argc, const char **argv, void *ctx)
 	return rc;
 }
 
-int cmd_destroy_namespace(int argc , const char **argv, void *ctx)
+int cmd_destroy_namespace(int argc , const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl destroy-namespace <namespace> [<options>]";
 	const char *namespace = parse_namespace_options(argc, argv,
@@ -1206,7 +1492,7 @@ int cmd_destroy_namespace(int argc , const char **argv, void *ctx)
 	return rc;
 }
 
-int cmd_check_namespace(int argc , const char **argv, void *ctx)
+int cmd_check_namespace(int argc , const char **argv, struct ndctl_ctx *ctx)
 {
 	char *xable_usage = "ndctl check-namespace <namespace> [<options>]";
 	const char *namespace = parse_namespace_options(argc, argv,
@@ -1219,5 +1505,21 @@ int cmd_check_namespace(int argc , const char **argv, void *ctx)
 				strerror(-rc));
 	fprintf(stderr, "checked %d namespace%s\n", checked,
 			checked == 1 ? "" : "s");
+	return rc;
+}
+
+int cmd_clear_errors(int argc , const char **argv, struct ndctl_ctx *ctx)
+{
+	char *xable_usage = "ndctl clear_errors <namespace> [<options>]";
+	const char *namespace = parse_namespace_options(argc, argv,
+			ACTION_CLEAR, clear_options, xable_usage);
+	int cleared, rc;
+
+	rc = do_xaction_namespace(namespace, ACTION_CLEAR, ctx, &cleared);
+	if (rc < 0)
+		fprintf(stderr, "error clearing namespaces: %s\n",
+				strerror(-rc));
+	fprintf(stderr, "cleared %d namespace%s\n", cleared,
+			cleared == 1 ? "" : "s");
 	return rc;
 }

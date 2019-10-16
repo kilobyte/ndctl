@@ -16,6 +16,7 @@
 #include <util/bitmap.h>
 #include <util/sysfs.h>
 #include <stdlib.h>
+#include <poll.h>
 #include "private.h"
 
 static const char NSINDEX_SIGNATURE[] = "NAMESPACE_INDEX\0";
@@ -66,9 +67,27 @@ static unsigned int sizeof_namespace_label(struct nvdimm_data *ndd)
 	return ndctl_dimm_sizeof_namespace_label(to_dimm(ndd));
 }
 
+static size_t __sizeof_namespace_index(u32 nslot)
+{
+	return ALIGN(sizeof(struct namespace_index) + DIV_ROUND_UP(nslot, 8),
+			NSINDEX_ALIGN);
+}
+
+static int __nvdimm_num_label_slots(struct nvdimm_data *ndd,
+		size_t index_size)
+{
+	return (ndd->config_size - index_size * 2) /
+		sizeof_namespace_label(ndd);
+}
+
 static int nvdimm_num_label_slots(struct nvdimm_data *ndd)
 {
-	return ndd->config_size / (sizeof_namespace_label(ndd) + 1);
+	u32 tmp_nslot, n;
+
+	tmp_nslot = ndd->config_size / sizeof_namespace_label(ndd);
+	n = __sizeof_namespace_index(tmp_nslot) / NSINDEX_ALIGN;
+
+	return __nvdimm_num_label_slots(ndd, NSINDEX_ALIGN * n);
 }
 
 static unsigned int sizeof_namespace_index(struct nvdimm_data *ndd)
@@ -78,18 +97,15 @@ static unsigned int sizeof_namespace_index(struct nvdimm_data *ndd)
 	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
 
 	/*
-	 * The minimum index space is 512 bytes, with that amount of
-	 * index we can describe ~1400 labels which is less than a byte
-	 * of overhead per label.  Round up to a byte of overhead per
-	 * label and determine the size of the index region.  Yes, this
-	 * starts to waste space at larger config_sizes, but it's
-	 * unlikely we'll ever see anything but 128K.
+	 * Per UEFI 2.7, the minimum size of the Label Storage Area is
+	 * large enough to hold 2 index blocks and 2 labels.  The
+	 * minimum index block size is 256 bytes, and the minimum label
+	 * size is 256 bytes.
 	 */
 	nslot = nvdimm_num_label_slots(ndd);
 	space = ndd->config_size - nslot * sizeof_namespace_label(ndd);
-	size = ALIGN(sizeof(struct namespace_index) + DIV_ROUND_UP(nslot, 8),
-			NSINDEX_ALIGN) * 2;
-	if (size <= space)
+	size = __sizeof_namespace_index(nslot) * 2;
+	if (size <= space && nslot >= 2)
 		return size / 2;
 
 	err(ctx, "%s: label area (%ld) too small to host (%d byte) labels\n",
@@ -331,8 +347,8 @@ static int nvdimm_set_config_data(struct nvdimm_data *ndd, size_t offset,
 	if (rc < 0)
 		goto out;
 
-	rc = ndctl_cmd_submit(cmd_write);
-	if (rc || ndctl_cmd_get_firmware_status(cmd_write))
+	rc = ndctl_cmd_submit_xlat(cmd_write);
+	if (rc < 0)
 		rc = -ENXIO;
  out:
 	ndctl_cmd_unref(cmd_write);
@@ -487,15 +503,15 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm)
         cmd_size = ndctl_dimm_cmd_new_cfg_size(dimm);
         if (!cmd_size)
                 return NULL;
-        rc = ndctl_cmd_submit(cmd_size);
-        if (rc || ndctl_cmd_get_firmware_status(cmd_size))
+        rc = ndctl_cmd_submit_xlat(cmd_size);
+        if (rc < 0)
                 goto out_size;
 
         cmd_read = ndctl_dimm_cmd_new_cfg_read(cmd_size);
         if (!cmd_read)
                 goto out_size;
-        rc = ndctl_cmd_submit(cmd_read);
-        if (rc || ndctl_cmd_get_firmware_status(cmd_read))
+        rc = ndctl_cmd_submit_xlat(cmd_read);
+        if (rc < 0)
                 goto out_read;
 	ndctl_cmd_unref(cmd_size);
 
@@ -536,8 +552,8 @@ NDCTL_EXPORT int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm)
 		rc = -ENXIO;
 		goto out_write;
 	}
-	rc = ndctl_cmd_submit(cmd_write);
-	if (rc || ndctl_cmd_get_firmware_status(cmd_write))
+	rc = ndctl_cmd_submit_xlat(cmd_write);
+	if (rc < 0)
 		goto out_write;
 
 	/*
@@ -566,7 +582,7 @@ NDCTL_EXPORT unsigned long ndctl_dimm_get_available_labels(
 	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
 	char *path = dimm->dimm_buf;
 	int rc, len = dimm->buf_len;
-	char buf[20];
+	char buf[SYSFS_ATTR_SIZE];
 
 	if (snprintf(path, len, "%s/available_slots", dimm->dimm_path) >= len) {
 		err(ctx, "%s: buffer too small!\n",
@@ -582,4 +598,186 @@ NDCTL_EXPORT unsigned long ndctl_dimm_get_available_labels(
 	}
 
 	return strtoul(buf, NULL, 0);
+}
+
+NDCTL_EXPORT enum ndctl_security_state ndctl_dimm_get_security(
+		struct ndctl_dimm *dimm)
+{
+	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
+	char *path = dimm->dimm_buf;
+	char buf[SYSFS_ATTR_SIZE];
+	int len = dimm->buf_len;
+	int rc;
+
+	if (snprintf(path, len, "%s/security", dimm->dimm_path) >= len) {
+		err(ctx, "%s: buffer too small!\n",
+				ndctl_dimm_get_devname(dimm));
+		return NDCTL_SECURITY_INVALID;
+	}
+
+	rc = sysfs_read_attr(ctx, path, buf);
+	if (rc < 0)
+		return NDCTL_SECURITY_INVALID;
+
+	if (strcmp(buf, "disabled") == 0)
+		return NDCTL_SECURITY_DISABLED;
+	else if (strcmp(buf, "unlocked") == 0)
+		return NDCTL_SECURITY_UNLOCKED;
+	else if (strcmp(buf, "locked") == 0)
+		return NDCTL_SECURITY_LOCKED;
+	else if (strcmp(buf, "frozen") == 0)
+		return NDCTL_SECURITY_FROZEN;
+	else if (strcmp(buf, "overwrite") == 0)
+		return NDCTL_SECURITY_OVERWRITE;
+
+	return NDCTL_SECURITY_INVALID;
+}
+
+static int write_security(struct ndctl_dimm *dimm, const char *cmd)
+{
+	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
+	char *path = dimm->dimm_buf;
+	int len = dimm->buf_len;
+
+	if (snprintf(path, len, "%s/security", dimm->dimm_path) >= len) {
+		err(ctx, "%s: buffer too small!\n",
+				ndctl_dimm_get_devname(dimm));
+		return -ERANGE;
+	}
+
+	return sysfs_write_attr(ctx, path, cmd);
+}
+
+NDCTL_EXPORT int ndctl_dimm_update_passphrase(struct ndctl_dimm *dimm,
+		long ckey, long nkey)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "update %ld %ld\n", ckey, nkey);
+	return write_security(dimm, buf);
+}
+
+NDCTL_EXPORT int ndctl_dimm_disable_passphrase(struct ndctl_dimm *dimm,
+		long key)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "disable %ld\n", key);
+	return write_security(dimm, buf);
+}
+
+NDCTL_EXPORT int ndctl_dimm_freeze_security(struct ndctl_dimm *dimm)
+{
+	return write_security(dimm, "freeze");
+}
+
+NDCTL_EXPORT int ndctl_dimm_secure_erase(struct ndctl_dimm *dimm, long key)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "erase %ld\n", key);
+	return write_security(dimm, buf);
+}
+
+NDCTL_EXPORT int ndctl_dimm_overwrite(struct ndctl_dimm *dimm, long key)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "overwrite %ld\n", key);
+	return write_security(dimm, buf);
+}
+
+NDCTL_EXPORT int ndctl_dimm_wait_overwrite(struct ndctl_dimm *dimm)
+{
+	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
+	struct pollfd fds;
+	char buf[SYSFS_ATTR_SIZE];
+	int fd = 0, rc;
+	char *path = dimm->dimm_buf;
+	int len = dimm->buf_len;
+
+	if (snprintf(path, len, "%s/security", dimm->dimm_path) >= len) {
+		err(ctx, "%s: buffer too small!\n",
+				ndctl_dimm_get_devname(dimm));
+		return -ERANGE;
+	}
+
+	fd = open(path, O_RDONLY|O_CLOEXEC);
+	if (fd < 0) {
+		rc = -errno;
+		err(ctx, "open: %s\n", strerror(errno));
+		return rc;
+	}
+	memset(&fds, 0, sizeof(fds));
+	fds.fd = fd;
+
+	rc = sysfs_read_attr(ctx, path, buf);
+	if (rc < 0) {
+		rc = -EOPNOTSUPP;
+		goto out;
+	}
+	/* skipping if we aren't in overwrite state */
+	if (strcmp(buf, "overwrite") != 0) {
+		rc = 0;
+		goto out;
+	}
+
+	for (;;) {
+		rc = sysfs_read_attr(ctx, path, buf);
+		if (rc < 0) {
+			rc = -EOPNOTSUPP;
+			break;
+		}
+
+		if (strcmp(buf, "overwrite") == 0) {
+			rc = poll(&fds, 1, -1);
+			if (rc < 0) {
+				rc = -errno;
+				err(ctx, "poll error: %s\n", strerror(errno));
+				break;
+			}
+			dbg(ctx, "poll wake: revents: %d\n", fds.revents);
+			if (pread(fd, buf, 1, 0) == -1) {
+				rc = -errno;
+				break;
+			}
+			fds.revents = 0;
+		} else {
+			if (strcmp(buf, "disabled") == 0)
+				rc = 1;
+			break;
+		}
+	}
+
+	if (rc == 1)
+		dbg(ctx, "%s: overwrite complete\n",
+				ndctl_dimm_get_devname(dimm));
+	else if (rc == 0)
+		dbg(ctx, "%s: ovewrite skipped\n",
+				ndctl_dimm_get_devname(dimm));
+	else
+		dbg(ctx, "%s: overwrite error waiting for complete\n",
+				ndctl_dimm_get_devname(dimm));
+
+ out:
+	close(fd);
+	return rc;
+}
+
+NDCTL_EXPORT int ndctl_dimm_update_master_passphrase(struct ndctl_dimm *dimm,
+		long ckey, long nkey)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "master_update %ld %ld\n", ckey, nkey);
+	return write_security(dimm, buf);
+}
+
+NDCTL_EXPORT int ndctl_dimm_master_secure_erase(struct ndctl_dimm *dimm,
+		long key)
+{
+	char buf[SYSFS_ATTR_SIZE];
+
+	sprintf(buf, "master_erase %ld\n", key);
+	return write_security(dimm, buf);
 }

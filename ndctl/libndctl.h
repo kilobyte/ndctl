@@ -20,7 +20,7 @@
 #include <errno.h>
 #include <limits.h>
 
-#ifdef HAVE_LIBUUID
+#ifdef HAVE_UUID
 #include <uuid/uuid.h>
 #else
 typedef unsigned char uuid_t[16];
@@ -133,6 +133,8 @@ enum ndctl_persistence_domain ndctl_bus_get_persistence_domain(
 		struct ndctl_bus *bus);
 int ndctl_bus_wait_probe(struct ndctl_bus *bus);
 int ndctl_bus_wait_for_scrub_completion(struct ndctl_bus *bus);
+int ndctl_bus_poll_scrub_completion(struct ndctl_bus *bus,
+		unsigned int poll_interval, unsigned int timeout);
 unsigned int ndctl_bus_get_scrub_count(struct ndctl_bus *bus);
 int ndctl_bus_get_scrub_state(struct ndctl_bus *bus);
 int ndctl_bus_start_scrub(struct ndctl_bus *bus);
@@ -597,7 +599,9 @@ int ndctl_pfn_set_uuid(struct ndctl_pfn *pfn, uuid_t uu);
 void ndctl_pfn_get_uuid(struct ndctl_pfn *pfn, uuid_t uu);
 int ndctl_pfn_has_align(struct ndctl_pfn *pfn);
 int ndctl_pfn_set_align(struct ndctl_pfn *pfn, unsigned long align);
+int ndctl_pfn_get_num_alignments(struct ndctl_pfn *pfn);
 unsigned long ndctl_pfn_get_align(struct ndctl_pfn *pfn);
+unsigned long ndctl_pfn_get_supported_alignment(struct ndctl_pfn *pfn, int i);
 unsigned long long ndctl_pfn_get_resource(struct ndctl_pfn *pfn);
 unsigned long long ndctl_pfn_get_size(struct ndctl_pfn *pfn);
 int ndctl_pfn_set_namespace(struct ndctl_pfn *pfn, struct ndctl_namespace *ndns);
@@ -628,7 +632,9 @@ unsigned long long ndctl_dax_get_resource(struct ndctl_dax *dax);
 int ndctl_dax_set_uuid(struct ndctl_dax *dax, uuid_t uu);
 enum ndctl_pfn_loc ndctl_dax_get_location(struct ndctl_dax *dax);
 int ndctl_dax_set_location(struct ndctl_dax *dax, enum ndctl_pfn_loc loc);
+int ndctl_dax_get_num_alignments(struct ndctl_dax *dax);
 unsigned long ndctl_dax_get_align(struct ndctl_dax *dax);
+unsigned long ndctl_dax_get_supported_alignment(struct ndctl_dax *dax, int i);
 int ndctl_dax_has_align(struct ndctl_dax *dax);
 int ndctl_dax_set_align(struct ndctl_dax *dax, unsigned long align);
 int ndctl_dax_set_namespace(struct ndctl_dax *dax,
@@ -680,6 +686,37 @@ unsigned long long ndctl_cmd_fw_fquery_get_fw_rev(struct ndctl_cmd *cmd);
 enum ND_FW_STATUS ndctl_cmd_fw_xlat_firmware_status(struct ndctl_cmd *cmd);
 struct ndctl_cmd *ndctl_dimm_cmd_new_ack_shutdown_count(struct ndctl_dimm *dimm);
 int ndctl_dimm_fw_update_supported(struct ndctl_dimm *dimm);
+
+int ndctl_cmd_xlat_firmware_status(struct ndctl_cmd *cmd);
+int ndctl_cmd_submit_xlat(struct ndctl_cmd *cmd);
+
+#define ND_PASSPHRASE_SIZE	32
+#define ND_KEY_DESC_LEN	22
+#define ND_KEY_DESC_PREFIX  7
+
+enum ndctl_security_state {
+	NDCTL_SECURITY_INVALID = -1,
+	NDCTL_SECURITY_DISABLED = 0,
+	NDCTL_SECURITY_UNLOCKED,
+	NDCTL_SECURITY_LOCKED,
+	NDCTL_SECURITY_FROZEN,
+	NDCTL_SECURITY_OVERWRITE,
+};
+
+enum ndctl_security_state ndctl_dimm_get_security(struct ndctl_dimm *dimm);
+int ndctl_dimm_update_passphrase(struct ndctl_dimm *dimm,
+		long ckey, long nkey);
+int ndctl_dimm_disable_passphrase(struct ndctl_dimm *dimm, long key);
+int ndctl_dimm_freeze_security(struct ndctl_dimm *dimm);
+int ndctl_dimm_secure_erase(struct ndctl_dimm *dimm, long key);
+int ndctl_dimm_overwrite(struct ndctl_dimm *dimm, long key);
+int ndctl_dimm_wait_overwrite(struct ndctl_dimm *dimm);
+int ndctl_dimm_update_master_passphrase(struct ndctl_dimm *dimm,
+		long ckey, long nkey);
+int ndctl_dimm_master_secure_erase(struct ndctl_dimm *dimm, long key);
+
+#define ND_KEY_DESC_SIZE	128
+#define ND_KEY_CMD_SIZE		128
 
 #ifdef __cplusplus
 } /* extern "C" */

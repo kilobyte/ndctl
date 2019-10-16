@@ -31,6 +31,7 @@
 #include <ccan/minmax/minmax.h>
 #include <ccan/array_size/array_size.h>
 #include <ndctl/firmware-update.h>
+#include <util/keys.h>
 
 struct action_context {
 	struct json_object *jdimms;
@@ -38,6 +39,23 @@ struct action_context {
 	FILE *f_out;
 	FILE *f_in;
 	struct update_context update;
+};
+
+static struct parameters {
+	const char *bus;
+	const char *outfile;
+	const char *infile;
+	const char *labelversion;
+	const char *kek;
+	bool crypto_erase;
+	bool overwrite;
+	bool zero_key;
+	bool master_pass;
+	bool force;
+	bool json;
+	bool verbose;
+} param = {
+	.labelversion = "1.1",
 };
 
 static int action_disable(struct ndctl_dimm *dimm, struct action_context *actx)
@@ -824,17 +842,131 @@ static int action_update(struct ndctl_dimm *dimm, struct action_context *actx)
 	return rc;
 }
 
-static struct parameters {
-	const char *bus;
-	const char *outfile;
-	const char *infile;
-	const char *labelversion;
-	bool force;
-	bool json;
-	bool verbose;
-} param = {
-	.labelversion = "1.1",
-};
+static int action_setup_passphrase(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	if (!param.kek)
+		return -EINVAL;
+
+	return ndctl_dimm_setup_key(dimm, param.kek,
+			param.master_pass ? ND_MASTER_KEY : ND_USER_KEY);
+}
+
+static int action_update_passphrase(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	return ndctl_dimm_update_key(dimm, param.kek,
+			param.master_pass ? ND_MASTER_KEY : ND_USER_KEY);
+}
+
+static int action_remove_passphrase(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	return ndctl_dimm_remove_key(dimm);
+}
+
+static int action_security_freeze(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	int rc;
+
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	rc = ndctl_dimm_freeze_security(dimm);
+	if (rc < 0)
+		error("Failed to freeze security for %s\n",
+				ndctl_dimm_get_devname(dimm));
+	return rc;
+}
+
+static int action_sanitize_dimm(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	int rc;
+	enum ndctl_key_type key_type;
+
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	if (param.overwrite && param.master_pass) {
+		error("%s: overwrite does not support master passphrase\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EINVAL;
+	}
+
+	/*
+	 * Setting crypto erase to be default. The other method will be
+	 * overwrite.
+	 */
+	if (!param.crypto_erase && !param.overwrite) {
+		param.crypto_erase = true;
+		printf("No santize method passed in, default to crypto-erase\n");
+	}
+
+	if (param.crypto_erase) {
+		if (param.zero_key)
+			key_type = ND_ZERO_KEY;
+		else if (param.master_pass)
+			key_type = ND_MASTER_KEY;
+		else
+			key_type = ND_USER_KEY;
+
+		rc = ndctl_dimm_secure_erase_key(dimm, key_type);
+		if (rc < 0)
+			return rc;
+	}
+
+	if (param.overwrite) {
+		rc = ndctl_dimm_overwrite_key(dimm);
+		if (rc < 0)
+			return rc;
+	}
+
+	return 0;
+}
+
+static int action_wait_overwrite(struct ndctl_dimm *dimm,
+		struct action_context *actx)
+{
+	int rc;
+
+	if (ndctl_dimm_get_security(dimm) < 0) {
+		error("%s: security operation not supported\n",
+				ndctl_dimm_get_devname(dimm));
+		return -EOPNOTSUPP;
+	}
+
+	rc = ndctl_dimm_wait_overwrite(dimm);
+	if (rc == 1)
+		printf("%s: overwrite completed.\n",
+				ndctl_dimm_get_devname(dimm));
+	return rc;
+}
 
 static int __action_init(struct ndctl_dimm *dimm,
 		enum ndctl_namespace_version version, int chk_only)
@@ -925,6 +1057,22 @@ OPT_BOOLEAN('f', "force", &param.force, \
 OPT_STRING('V', "label-version", &param.labelversion, "version-number", \
 	"namespace label specification version (default: 1.1)")
 
+#define KEY_OPTIONS() \
+OPT_STRING('k', "key-handle", &param.kek, "key-handle", \
+		"master encryption key handle")
+
+#define SANITIZE_OPTIONS() \
+OPT_BOOLEAN('c', "crypto-erase", &param.crypto_erase, \
+		"crypto erase a dimm"), \
+OPT_BOOLEAN('o', "overwrite", &param.overwrite, \
+		"overwrite a dimm"), \
+OPT_BOOLEAN('z', "zero-key", &param.zero_key, \
+		"pass in a zero key")
+
+#define MASTER_OPTIONS() \
+OPT_BOOLEAN('m', "master-passphrase", &param.master_pass, \
+		"use master passphrase")
+
 static const struct option read_options[] = {
 	BASE_OPTIONS(),
 	READ_OPTIONS(),
@@ -954,7 +1102,20 @@ static const struct option init_options[] = {
 	OPT_END(),
 };
 
-static int dimm_action(int argc, const char **argv, void *ctx,
+static const struct option key_options[] = {
+	BASE_OPTIONS(),
+	KEY_OPTIONS(),
+	MASTER_OPTIONS(),
+};
+
+static const struct option sanitize_options[] = {
+	BASE_OPTIONS(),
+	SANITIZE_OPTIONS(),
+	MASTER_OPTIONS(),
+	OPT_END(),
+};
+
+static int dimm_action(int argc, const char **argv, struct ndctl_ctx *ctx,
 		int (*action)(struct ndctl_dimm *dimm, struct action_context *actx),
 		const struct option *options, const char *usage)
 {
@@ -1102,7 +1263,7 @@ static int dimm_action(int argc, const char **argv, void *ctx,
 	return rc;
 }
 
-int cmd_write_labels(int argc, const char **argv, void *ctx)
+int cmd_write_labels(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_write, write_options,
 			"ndctl write-labels <nmem> [-i <filename>]");
@@ -1112,7 +1273,7 @@ int cmd_write_labels(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_read_labels(int argc, const char **argv, void *ctx)
+int cmd_read_labels(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_read, read_options,
 			"ndctl read-labels <nmem0> [<nmem1>..<nmemN>] [-o <filename>]");
@@ -1122,7 +1283,7 @@ int cmd_read_labels(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_zero_labels(int argc, const char **argv, void *ctx)
+int cmd_zero_labels(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_zero, base_options,
 			"ndctl zero-labels <nmem0> [<nmem1>..<nmemN>] [<options>]");
@@ -1132,7 +1293,7 @@ int cmd_zero_labels(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_init_labels(int argc, const char **argv, void *ctx)
+int cmd_init_labels(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_init, init_options,
 			"ndctl init-labels <nmem0> [<nmem1>..<nmemN>] [<options>]");
@@ -1142,7 +1303,7 @@ int cmd_init_labels(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_check_labels(int argc, const char **argv, void *ctx)
+int cmd_check_labels(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_check, base_options,
 			"ndctl check-labels <nmem0> [<nmem1>..<nmemN>] [<options>]");
@@ -1152,7 +1313,7 @@ int cmd_check_labels(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_disable_dimm(int argc, const char **argv, void *ctx)
+int cmd_disable_dimm(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_disable, base_options,
 			"ndctl disable-dimm <nmem0> [<nmem1>..<nmemN>] [<options>]");
@@ -1162,7 +1323,7 @@ int cmd_disable_dimm(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_enable_dimm(int argc, const char **argv, void *ctx)
+int cmd_enable_dimm(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_enable, base_options,
 			"ndctl enable-dimm <nmem0> [<nmem1>..<nmemN>] [<options>]");
@@ -1172,12 +1333,79 @@ int cmd_enable_dimm(int argc, const char **argv, void *ctx)
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }
 
-int cmd_update_firmware(int argc, const char **argv, void *ctx)
+int cmd_update_firmware(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
 	int count = dimm_action(argc, argv, ctx, action_update, update_options,
 			"ndctl update-firmware <nmem0> [<nmem1>..<nmemN>] [<options>]");
 
 	fprintf(stderr, "updated %d nmem%s.\n", count >= 0 ? count : 0,
 			count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_update_passphrase(int argc, const char **argv, struct ndctl_ctx *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_update_passphrase,
+			key_options,
+			"ndctl update-passphrase <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
+	fprintf(stderr, "passphrase updated for %d nmem%s.\n", count >= 0 ? count : 0,
+			count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_setup_passphrase(int argc, const char **argv, struct ndctl_ctx *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_setup_passphrase,
+			key_options,
+			"ndctl setup-passphrase <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
+	fprintf(stderr, "passphrase enabled for %d nmem%s.\n", count >= 0 ? count : 0,
+			count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_remove_passphrase(int argc, const char **argv, void *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_remove_passphrase,
+			base_options,
+			"ndctl remove-passphrase <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
+	fprintf(stderr, "passphrase removed for %d nmem%s.\n", count >= 0 ? count : 0,
+			count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_freeze_security(int argc, const char **argv, void *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_security_freeze, base_options,
+			"ndctl freeze-security <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
+	fprintf(stderr, "security freezed %d nmem%s.\n", count >= 0 ? count : 0,
+			count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_sanitize_dimm(int argc, const char **argv, void *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_sanitize_dimm,
+			sanitize_options,
+			"ndctl sanitize-dimm <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
+	if (param.overwrite)
+		fprintf(stderr, "overwrite issued for %d nmem%s.\n",
+				count >= 0 ? count : 0, count > 1 ? "s" : "");
+	else
+		fprintf(stderr, "sanitized %d nmem%s.\n",
+				count >= 0 ? count : 0, count > 1 ? "s" : "");
+	return count >= 0 ? 0 : EXIT_FAILURE;
+}
+
+int cmd_wait_overwrite(int argc, const char **argv, void *ctx)
+{
+	int count = dimm_action(argc, argv, ctx, action_wait_overwrite,
+			base_options,
+			"ndctl wait-overwrite <nmem0> [<nmem1>..<nmemN>] [<options>]");
+
 	return count >= 0 ? 0 : EXIT_FAILURE;
 }

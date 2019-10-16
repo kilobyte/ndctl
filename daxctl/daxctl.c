@@ -28,20 +28,20 @@
 #include <util/strbuf.h>
 #include <util/util.h>
 #include <util/main.h>
-#include <builtin.h>
+#include <daxctl/builtin.h>
 
 const char daxctl_usage_string[] = "daxctl [--version] [--help] COMMAND [ARGS]";
 const char daxctl_more_info_string[] =
 	"See 'daxctl help COMMAND' for more information on a specific command.\n"
 	" daxctl --list-cmds to see all available commands";
 
-static int cmd_version(int argc, const char **argv, void *ctx)
+static int cmd_version(int argc, const char **argv, struct daxctl_ctx *ctx)
 {
 	printf("%s\n", VERSION);
 	return 0;
 }
 
-static int cmd_help(int argc, const char **argv, void *ctx)
+static int cmd_help(int argc, const char **argv, struct daxctl_ctx *ctx)
 {
 	const char * const builtin_help_subcommands[] = {
 		"list", NULL,
@@ -66,12 +66,11 @@ static int cmd_help(int argc, const char **argv, void *ctx)
 	return help_show_man_page(argv[0], "daxctl", "DAXCTL_MAN_VIEWER");
 }
 
-int cmd_list(int argc, const char **argv, void *ctx);
-
 static struct cmd_struct commands[] = {
-	{ "version", cmd_version },
-	{ "list", cmd_list },
-	{ "help", cmd_help },
+	{ "version", .d_fn = cmd_version },
+	{ "list", .d_fn = cmd_list },
+	{ "help", .d_fn = cmd_help },
+	{ "migrate-device-model", .d_fn = cmd_migrate },
 };
 
 int main(int argc, const char **argv)
@@ -99,7 +98,7 @@ int main(int argc, const char **argv)
 	if (rc)
 		goto out;
 	main_handle_internal_command(argc, argv, ctx, commands,
-			ARRAY_SIZE(commands));
+			ARRAY_SIZE(commands), PROG_DAXCTL);
 	daxctl_unref(ctx);
 	fprintf(stderr, "Unknown command: '%s'\n", argv[0]);
 out:

@@ -385,3 +385,28 @@ global:
 	ndctl_namespace_get_next_badblock;
 	ndctl_dimm_get_dirty_shutdown;
 } LIBNDCTL_17;
+
+LIBNDCTL_19 {
+global:
+	ndctl_cmd_xlat_firmware_status;
+	ndctl_cmd_submit_xlat;
+	ndctl_pfn_get_supported_alignment;
+	ndctl_pfn_get_num_alignments;
+	ndctl_dax_get_supported_alignment;
+	ndctl_dax_get_num_alignments;
+	ndctl_dimm_get_security;
+	ndctl_dimm_update_passphrase;
+	ndctl_dimm_disable_passphrase;
+	ndctl_dimm_freeze_security;
+	ndctl_dimm_secure_erase;
+	ndctl_dimm_overwrite;
+	ndctl_dimm_wait_overwrite;
+	ndctl_dimm_update_master_passphrase;
+	ndctl_dimm_master_secure_erase;
+} LIBNDCTL_18;
+
+
+LIBNDCTL_20 {
+global:
+	ndctl_bus_poll_scrub_completion;
+} LIBNDCTL_19;
