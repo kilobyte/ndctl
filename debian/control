@@ -15,7 +15,8 @@ Build-Depends: debhelper-compat (= 12),
                asciidoctor
 Rules-Requires-Root: no
 Homepage: https://github.com/pmem/ndctl
-Vcs-Browser: https://github.com/leitao/ndctl_deb
+Vcs-Git: https://github.com/kilobyte/ndctl -b debian
+Vcs-Browser: https://github.com/kilobyte/ndctl/tree/debian
 
 Package: ndctl
 Section: misc
