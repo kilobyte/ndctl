@@ -370,14 +370,15 @@ static struct namespace_label *label_base(struct nvdimm_data *ndd)
 	return (struct namespace_label *) base;
 }
 
-static void init_ndd(struct nvdimm_data *ndd, struct ndctl_cmd *cmd_read)
+static void init_ndd(struct nvdimm_data *ndd, struct ndctl_cmd *cmd_read,
+		struct ndctl_cmd *cmd_size)
 {
 	ndctl_cmd_unref(ndd->cmd_read);
 	memset(ndd, 0, sizeof(*ndd));
 	ndd->cmd_read = cmd_read;
 	ndctl_cmd_ref(cmd_read);
 	ndd->data = cmd_read->iter.total_buf;
-	ndd->config_size = cmd_read->iter.total_xfer;
+	ndd->config_size = cmd_size->get_size->config_size;
 	ndd->ns_current = -1;
 	ndd->ns_next = -1;
 }
@@ -490,7 +491,54 @@ NDCTL_EXPORT int ndctl_dimm_validate_labels(struct ndctl_dimm *dimm)
 	return label_validate(&dimm->ndd);
 }
 
-NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm)
+NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm)
+{
+        struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
+        struct ndctl_cmd *cmd_size, *cmd_read;
+	struct nvdimm_data *ndd = &dimm->ndd;
+        int rc;
+
+        rc = ndctl_bus_wait_probe(bus);
+        if (rc < 0)
+                return NULL;
+
+        cmd_size = ndctl_dimm_cmd_new_cfg_size(dimm);
+        if (!cmd_size)
+                return NULL;
+        rc = ndctl_cmd_submit_xlat(cmd_size);
+        if (rc < 0)
+                goto out_size;
+
+        cmd_read = ndctl_dimm_cmd_new_cfg_read(cmd_size);
+        if (!cmd_read)
+                goto out_size;
+	/*
+	 * To calc the namespace index size use the minimum label
+	 * size which corresponds to the maximum namespace index size.
+	 */
+	init_ndd(ndd, cmd_read, cmd_size);
+	ndd->nslabel_size = 128;
+	rc = ndctl_cmd_cfg_read_set_extent(cmd_read,
+			sizeof_namespace_index(ndd) * 2, 0);
+	if (rc < 0)
+		goto out_read;
+
+        rc = ndctl_cmd_submit_xlat(cmd_read);
+        if (rc < 0)
+                goto out_read;
+	ndctl_cmd_unref(cmd_size);
+
+	return cmd_read;
+
+ out_read:
+        ndctl_cmd_unref(cmd_read);
+ out_size:
+        ndctl_cmd_unref(cmd_size);
+        return NULL;
+}
+
+NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_label_extent(
+		struct ndctl_dimm *dimm, unsigned int len, unsigned int offset)
 {
         struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
         struct ndctl_cmd *cmd_size, *cmd_read;
@@ -510,12 +558,24 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm)
         cmd_read = ndctl_dimm_cmd_new_cfg_read(cmd_size);
         if (!cmd_read)
                 goto out_size;
+
+	/*
+	 * For ndctl_read_labels() compat, enable subsequent calls that
+	 * will manipulate labels
+	 */
+	if (len == 0 && offset == 0)
+		init_ndd(&dimm->ndd, cmd_read, cmd_size);
+
+	if (len == 0)
+		len = cmd_size->get_size->config_size;
+	rc = ndctl_cmd_cfg_read_set_extent(cmd_read, len, offset);
+	if (rc < 0)
+		goto out_read;
+
         rc = ndctl_cmd_submit_xlat(cmd_read);
         if (rc < 0)
                 goto out_read;
 	ndctl_cmd_unref(cmd_size);
-
-	init_ndd(&dimm->ndd, cmd_read);
 
 	return cmd_read;
 
@@ -526,15 +586,21 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm)
         return NULL;
 }
 
-NDCTL_EXPORT int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm)
+NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm)
+{
+	return ndctl_dimm_read_label_extent(dimm, 0, 0);
+}
+
+NDCTL_EXPORT int ndctl_dimm_zero_label_extent(struct ndctl_dimm *dimm,
+		unsigned int len, unsigned int offset)
 {
 	struct ndctl_ctx *ctx = ndctl_dimm_get_ctx(dimm);
 	struct ndctl_cmd *cmd_read, *cmd_write;
 	int rc;
 
-	cmd_read = ndctl_dimm_read_labels(dimm);
+	cmd_read = ndctl_dimm_read_label_extent(dimm, len, offset);
 	if (!cmd_read)
-		return -ENXIO;
+		return -EINVAL;
 
 	if (ndctl_dimm_is_active(dimm)) {
 		dbg(ctx, "%s: regions active, abort label write\n",
@@ -574,6 +640,11 @@ NDCTL_EXPORT int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm)
 	ndctl_cmd_unref(cmd_read);
 
 	return rc;
+}
+
+NDCTL_EXPORT int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm)
+{
+	return ndctl_dimm_zero_label_extent(dimm, 0, 0);
 }
 
 NDCTL_EXPORT unsigned long ndctl_dimm_get_available_labels(

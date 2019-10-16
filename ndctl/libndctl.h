@@ -307,7 +307,12 @@ struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_size(struct ndctl_dimm *dimm);
 struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_read(struct ndctl_cmd *cfg_size);
 struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_write(struct ndctl_cmd *cfg_read);
 int ndctl_dimm_zero_labels(struct ndctl_dimm *dimm);
+int ndctl_dimm_zero_label_extent(struct ndctl_dimm *dimm,
+		unsigned int len, unsigned int offset);
 struct ndctl_cmd *ndctl_dimm_read_labels(struct ndctl_dimm *dimm);
+struct ndctl_cmd *ndctl_dimm_read_label_index(struct ndctl_dimm *dimm);
+struct ndctl_cmd *ndctl_dimm_read_label_extent(struct ndctl_dimm *dimm,
+		unsigned int len, unsigned int offset);
 int ndctl_dimm_validate_labels(struct ndctl_dimm *dimm);
 enum ndctl_namespace_version {
 	NDCTL_NS_VERSION_1_1,
@@ -321,6 +326,10 @@ unsigned int ndctl_cmd_cfg_size_get_size(struct ndctl_cmd *cfg_size);
 ssize_t ndctl_cmd_cfg_read_get_data(struct ndctl_cmd *cfg_read, void *buf,
 		unsigned int len, unsigned int offset);
 ssize_t ndctl_cmd_cfg_read_get_size(struct ndctl_cmd *cfg_read);
+int ndctl_cmd_cfg_read_set_extent(struct ndctl_cmd *cfg_read,
+		unsigned int len, unsigned int offset);
+int ndctl_cmd_cfg_write_set_extent(struct ndctl_cmd *cfg_write,
+		unsigned int len, unsigned int offset);
 ssize_t ndctl_cmd_cfg_write_set_data(struct ndctl_cmd *cfg_write, void *buf,
 		unsigned int len, unsigned int offset);
 ssize_t ndctl_cmd_cfg_write_zero_data(struct ndctl_cmd *cfg_write);

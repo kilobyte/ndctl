@@ -9,6 +9,8 @@ lib_LTLIBRARIES = libdaxctl.la
 libdaxctl_la_SOURCES =\
 	../libdaxctl.h \
 	libdaxctl-private.h \
+	../../util/iomem.c \
+	../../util/iomem.h \
 	../../util/sysfs.c \
 	../../util/sysfs.h \
 	../../util/log.c \
@@ -16,7 +18,8 @@ libdaxctl_la_SOURCES =\
 	libdaxctl.c
 
 libdaxctl_la_LIBADD =\
-	$(UUID_LIBS)
+	$(UUID_LIBS) \
+	$(KMOD_LIBS)
 
 daxctl_modprobe_data_DATA = daxctl.conf
 

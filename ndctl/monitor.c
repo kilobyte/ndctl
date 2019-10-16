@@ -357,8 +357,8 @@ static int monitor_event(struct ndctl_ctx *ctx,
 	while (1) {
 		did_fail = 0;
 		nfds = epoll_wait(epollfd, events, mfa->num_dimm, -1);
-		if (nfds <= 0) {
-			err(&monitor, "epoll_wait error\n");
+		if (nfds <= 0 && errno != EINTR) {
+			err(&monitor, "epoll_wait error: (%s)\n", strerror(errno));
 			rc = -errno;
 			goto out;
 		}
@@ -646,7 +646,7 @@ int cmd_monitor(int argc, const char **argv, struct ndctl_ctx *ctx)
 		goto out;
 
 	if (!mfa.num_dimm) {
-		dbg(&monitor, "no dimms to monitor\n");
+		info(&monitor, "no dimms to monitor, exiting\n");
 		if (!monitor.daemon)
 			rc = -ENXIO;
 		goto out;
