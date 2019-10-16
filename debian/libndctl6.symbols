@@ -6,9 +6,10 @@ libndctl.so.6 libndctl6 #MINVER#
  LIBNDCTL_16@LIBNDCTL_16 63
  LIBNDCTL_17@LIBNDCTL_17 63
  LIBNDCTL_18@LIBNDCTL_18 63
- LIBNDCTL_19@LIBNDCTL_19 65-1
+ LIBNDCTL_19@LIBNDCTL_19 65
  LIBNDCTL_1@LIBNDCTL_1 63
- LIBNDCTL_20@LIBNDCTL_20 65-1
+ LIBNDCTL_20@LIBNDCTL_20 65
+ LIBNDCTL_21@LIBNDCTL_21 66
  LIBNDCTL_3@LIBNDCTL_3 63
  ndctl_bb_get_block@LIBNDCTL_14 63
  ndctl_bb_get_count@LIBNDCTL_14 63
@@ -58,7 +59,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_bus_has_nfit@LIBNDCTL_3 63
  ndctl_bus_is_cmd_supported@LIBNDCTL_3 63
  ndctl_bus_is_nfit_cmd_supported@LIBNDCTL_13 63
- ndctl_bus_poll_scrub_completion@LIBNDCTL_20 65-1
+ ndctl_bus_poll_scrub_completion@LIBNDCTL_20 65
  ndctl_bus_start_scrub@LIBNDCTL_15 63
  ndctl_bus_wait_for_scrub_completion@LIBNDCTL_14 63
  ndctl_bus_wait_probe@LIBNDCTL_3 63
@@ -72,8 +73,10 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_cmd_ars_stat_get_flag_overflow@LIBNDCTL_16 63
  ndctl_cmd_cfg_read_get_data@LIBNDCTL_3 63
  ndctl_cmd_cfg_read_get_size@LIBNDCTL_3 63
+ ndctl_cmd_cfg_read_set_extent@LIBNDCTL_21 66
  ndctl_cmd_cfg_size_get_size@LIBNDCTL_3 63
  ndctl_cmd_cfg_write_set_data@LIBNDCTL_3 63
+ ndctl_cmd_cfg_write_set_extent@LIBNDCTL_21 66
  ndctl_cmd_cfg_write_zero_data@LIBNDCTL_3 63
  ndctl_cmd_clear_error_get_cleared@LIBNDCTL_3 63
  ndctl_cmd_fw_fquery_get_fw_rev@LIBNDCTL_14 63
@@ -118,12 +121,12 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_cmd_smart_threshold_set_spares@LIBNDCTL_14 63
  ndctl_cmd_smart_threshold_set_temperature@LIBNDCTL_14 63
  ndctl_cmd_submit@LIBNDCTL_3 63
- ndctl_cmd_submit_xlat@LIBNDCTL_19 65-1
+ ndctl_cmd_submit_xlat@LIBNDCTL_19 65
  ndctl_cmd_unref@LIBNDCTL_3 63
  ndctl_cmd_vendor_get_output@LIBNDCTL_3 63
  ndctl_cmd_vendor_get_output_size@LIBNDCTL_3 63
  ndctl_cmd_vendor_set_input@LIBNDCTL_3 63
- ndctl_cmd_xlat_firmware_status@LIBNDCTL_19 65-1
+ ndctl_cmd_xlat_firmware_status@LIBNDCTL_19 65
  ndctl_dax_delete@LIBNDCTL_3 63
  ndctl_dax_enable@LIBNDCTL_3 63
  ndctl_dax_get_align@LIBNDCTL_3 63
@@ -136,11 +139,11 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dax_get_location@LIBNDCTL_3 63
  ndctl_dax_get_namespace@LIBNDCTL_3 63
  ndctl_dax_get_next@LIBNDCTL_3 63
- ndctl_dax_get_num_alignments@LIBNDCTL_19 65-1
+ ndctl_dax_get_num_alignments@LIBNDCTL_19 65
  ndctl_dax_get_region@LIBNDCTL_3 63
  ndctl_dax_get_resource@LIBNDCTL_3 63
  ndctl_dax_get_size@LIBNDCTL_3 63
- ndctl_dax_get_supported_alignment@LIBNDCTL_19 65-1
+ ndctl_dax_get_supported_alignment@LIBNDCTL_19 65
  ndctl_dax_get_uuid@LIBNDCTL_3 63
  ndctl_dax_has_align@LIBNDCTL_3 63
  ndctl_dax_is_configured@LIBNDCTL_3 63
@@ -168,14 +171,14 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dimm_cmd_new_smart_threshold@LIBNDCTL_3 63
  ndctl_dimm_cmd_new_vendor_specific@LIBNDCTL_3 63
  ndctl_dimm_disable@LIBNDCTL_3 63
- ndctl_dimm_disable_passphrase@LIBNDCTL_19 65-1
+ ndctl_dimm_disable_passphrase@LIBNDCTL_19 65
  ndctl_dimm_enable@LIBNDCTL_3 63
  ndctl_dimm_failed_arm@LIBNDCTL_3 63
  ndctl_dimm_failed_flush@LIBNDCTL_3 63
  ndctl_dimm_failed_map@LIBNDCTL_3 63
  ndctl_dimm_failed_restore@LIBNDCTL_3 63
  ndctl_dimm_failed_save@LIBNDCTL_3 63
- ndctl_dimm_freeze_security@LIBNDCTL_19 65-1
+ ndctl_dimm_freeze_security@LIBNDCTL_19 65
  ndctl_dimm_fw_update_supported@LIBNDCTL_15 63
  ndctl_dimm_get_available_labels@LIBNDCTL_3 63
  ndctl_dimm_get_bus@LIBNDCTL_3 63
@@ -202,7 +205,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dimm_get_next@LIBNDCTL_3 63
  ndctl_dimm_get_phys_id@LIBNDCTL_3 63
  ndctl_dimm_get_revision@LIBNDCTL_3 63
- ndctl_dimm_get_security@LIBNDCTL_19 65-1
+ ndctl_dimm_get_security@LIBNDCTL_19 65
  ndctl_dimm_get_serial@LIBNDCTL_3 63
  ndctl_dimm_get_subsystem_device@LIBNDCTL_3 63
  ndctl_dimm_get_subsystem_revision@LIBNDCTL_3 63
@@ -222,17 +225,20 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dimm_is_enabled@LIBNDCTL_3 63
  ndctl_dimm_is_flag_supported@LIBNDCTL_17 63
  ndctl_dimm_locked@LIBNDCTL_14 63
- ndctl_dimm_master_secure_erase@LIBNDCTL_19 65-1
- ndctl_dimm_overwrite@LIBNDCTL_19 65-1
+ ndctl_dimm_master_secure_erase@LIBNDCTL_19 65
+ ndctl_dimm_overwrite@LIBNDCTL_19 65
+ ndctl_dimm_read_label_extent@LIBNDCTL_21 66
+ ndctl_dimm_read_label_index@LIBNDCTL_21 66
  ndctl_dimm_read_labels@LIBNDCTL_13 63
- ndctl_dimm_secure_erase@LIBNDCTL_19 65-1
+ ndctl_dimm_secure_erase@LIBNDCTL_19 65
  ndctl_dimm_sizeof_namespace_label@LIBNDCTL_13 63
  ndctl_dimm_smart_inject_supported@LIBNDCTL_17 63
  ndctl_dimm_smart_pending@LIBNDCTL_3 63
- ndctl_dimm_update_master_passphrase@LIBNDCTL_19 65-1
- ndctl_dimm_update_passphrase@LIBNDCTL_19 65-1
+ ndctl_dimm_update_master_passphrase@LIBNDCTL_19 65
+ ndctl_dimm_update_passphrase@LIBNDCTL_19 65
  ndctl_dimm_validate_labels@LIBNDCTL_13 63
- ndctl_dimm_wait_overwrite@LIBNDCTL_19 65-1
+ ndctl_dimm_wait_overwrite@LIBNDCTL_19 65
+ ndctl_dimm_zero_label_extent@LIBNDCTL_21 66
  ndctl_dimm_zero_labels@LIBNDCTL_3 63
  ndctl_encode_smart_temperature@LIBNDCTL_14 63
  ndctl_get_daxctl_ctx@LIBNDCTL_1 63
@@ -321,11 +327,11 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_pfn_get_location@LIBNDCTL_3 63
  ndctl_pfn_get_namespace@LIBNDCTL_3 63
  ndctl_pfn_get_next@LIBNDCTL_3 63
- ndctl_pfn_get_num_alignments@LIBNDCTL_19 65-1
+ ndctl_pfn_get_num_alignments@LIBNDCTL_19 65
  ndctl_pfn_get_region@LIBNDCTL_3 63
  ndctl_pfn_get_resource@LIBNDCTL_3 63
  ndctl_pfn_get_size@LIBNDCTL_3 63
- ndctl_pfn_get_supported_alignment@LIBNDCTL_19 65-1
+ ndctl_pfn_get_supported_alignment@LIBNDCTL_19 65
  ndctl_pfn_get_uuid@LIBNDCTL_3 63
  ndctl_pfn_has_align@LIBNDCTL_3 63
  ndctl_pfn_is_configured@LIBNDCTL_3 63
