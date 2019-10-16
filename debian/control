@@ -13,6 +13,7 @@ Build-Depends: debhelper (>= 11),
                systemd,
                libkeyutils-dev,
                asciidoctor
+Rules-Requires-Root: no
 Homepage: https://github.com/pmem/ndctl
 Vcs-Browser: https://github.com/leitao/ndctl_deb
 
