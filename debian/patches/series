@@ -1,2 +1,0 @@
-avoid_modprobe_test.patch
-include_errno.h.patch
