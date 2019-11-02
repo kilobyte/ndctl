@@ -6,6 +6,7 @@ libdaxctl.so.1 libdaxctl1 #MINVER#
  LIBDAXCTL_4@LIBDAXCTL_4 63
  LIBDAXCTL_5@LIBDAXCTL_5 63
  LIBDAXCTL_6@LIBDAXCTL_6 66
+ LIBDAXCTL_7@LIBDAXCTL_7 67
  daxctl_dev_disable@LIBDAXCTL_6 66
  daxctl_dev_enable_devdax@LIBDAXCTL_6 66
  daxctl_dev_enable_ram@LIBDAXCTL_6 66
@@ -27,10 +28,12 @@ libdaxctl.so.1 libdaxctl1 #MINVER#
  daxctl_memory_get_block_size@LIBDAXCTL_6 66
  daxctl_memory_get_dev@LIBDAXCTL_6 66
  daxctl_memory_get_node_path@LIBDAXCTL_6 66
+ daxctl_memory_is_movable@LIBDAXCTL_7 67
  daxctl_memory_is_online@LIBDAXCTL_6 66
  daxctl_memory_num_sections@LIBDAXCTL_6 66
  daxctl_memory_offline@LIBDAXCTL_6 66
  daxctl_memory_online@LIBDAXCTL_6 66
+ daxctl_memory_online_no_movable@LIBDAXCTL_7 67
  daxctl_new@LIBDAXCTL_1 63
  daxctl_new_region@LIBDAXCTL_2 63
  daxctl_ref@LIBDAXCTL_1 63
