@@ -41,6 +41,7 @@ static struct parameters {
 	bool do_scan;
 	bool mode_default;
 	bool autolabel;
+	bool greedy;
 	const char *bus;
 	const char *map;
 	const char *type;
@@ -114,7 +115,9 @@ OPT_STRING('t', "type", &param.type, "type", \
 OPT_STRING('a', "align", &param.align, "align", \
 	"specify the namespace alignment in bytes (default: 2M)"), \
 OPT_BOOLEAN('f', "force", &force, "reconfigure namespace even if currently active"), \
-OPT_BOOLEAN('L', "autolabel", &param.autolabel, "automatically initialize labels")
+OPT_BOOLEAN('L', "autolabel", &param.autolabel, "automatically initialize labels"), \
+OPT_BOOLEAN('c', "continue", &param.greedy, \
+	"continue creating namespaces as long as the filter criteria are met")
 
 #define CHECK_OPTIONS() \
 OPT_BOOLEAN('R', "repair", &repair, "perform metadata repairs"), \
@@ -595,6 +598,22 @@ static int validate_namespace_options(struct ndctl_region *region,
 			return -ENXIO;
 		}
 	} else {
+		/*
+		 * If we are trying to reconfigure with the same namespace mode,
+		 * use the align details from the original namespace. Otherwise
+		 * pick the align details from seed namespace
+		 */
+		if (ndns && p->mode == ndctl_namespace_get_mode(ndns)) {
+			struct ndctl_pfn *ns_pfn = ndctl_namespace_get_pfn(ndns);
+			struct ndctl_dax *ns_dax = ndctl_namespace_get_dax(ndns);
+
+			if (ns_pfn)
+				p->align = ndctl_pfn_get_align(ns_pfn);
+			else if (ns_dax)
+				p->align = ndctl_dax_get_align(ns_dax);
+			else
+				p->align = sysconf(_SC_PAGE_SIZE);
+		} else
 		/*
 		 * Use the seed namespace alignment as the default if we need
 		 * one. If we don't then use PAGE_SIZE so the size_align
@@ -1244,7 +1263,7 @@ static int raw_clear_badblocks(struct ndctl_namespace *ndns)
 	return nstype_clear_badblocks(ndns, devname, begin, size);
 }
 
-static int namespace_wait_scrub(struct ndctl_namespace *ndns)
+static int namespace_wait_scrub(struct ndctl_namespace *ndns, bool do_scrub)
 {
 	const char *devname = ndctl_namespace_get_devname(ndns);
 	struct ndctl_bus *bus = ndctl_namespace_get_bus(ndns);
@@ -1258,7 +1277,7 @@ static int namespace_wait_scrub(struct ndctl_namespace *ndns)
 	}
 
 	/* start a scrub if asked and if one isn't in progress */
-	if (scrub && (!in_progress)) {
+	if (do_scrub && (!in_progress)) {
 		rc = ndctl_bus_start_scrub(bus);
 		if (rc) {
 			error("%s: Unable to start scrub: %s\n", devname,
@@ -1281,7 +1300,7 @@ static int namespace_wait_scrub(struct ndctl_namespace *ndns)
 	return 0;
 }
 
-static int namespace_clear_bb(struct ndctl_namespace *ndns)
+static int namespace_clear_bb(struct ndctl_namespace *ndns, bool do_scrub)
 {
 	struct ndctl_pfn *pfn = ndctl_namespace_get_pfn(ndns);
 	struct ndctl_dax *dax = ndctl_namespace_get_dax(ndns);
@@ -1296,7 +1315,7 @@ static int namespace_clear_bb(struct ndctl_namespace *ndns)
 		return 1;
 	}
 
-	rc = namespace_wait_scrub(ndns);
+	rc = namespace_wait_scrub(ndns, do_scrub);
 	if (rc)
 		return rc;
 
@@ -1322,10 +1341,10 @@ static int do_xaction_namespace(const char *namespace,
 		int *processed)
 {
 	struct ndctl_namespace *ndns, *_n;
+	int rc = -ENXIO, saved_rc = 0;
 	struct ndctl_region *region;
 	const char *ndns_name;
 	struct ndctl_bus *bus;
-	int rc = -ENXIO;
 
 	*processed = 0;
 
@@ -1336,8 +1355,13 @@ static int do_xaction_namespace(const char *namespace,
 		ndctl_set_log_priority(ctx, LOG_DEBUG);
 
         ndctl_bus_foreach(ctx, bus) {
+		bool do_scrub;
+
 		if (!util_bus_filter(bus, param.bus))
 			continue;
+
+		/* only request scrubbing once per bus */
+		do_scrub = scrub;
 
 		ndctl_region_foreach(bus, region) {
 			if (!util_region_filter(region, param.region))
@@ -1360,8 +1384,16 @@ static int do_xaction_namespace(const char *namespace,
 				rc = namespace_create(region);
 				if (rc == -EAGAIN)
 					continue;
-				if (rc == 0)
-					*processed = 1;
+				if (rc == 0) {
+					(*processed)++;
+					if (param.greedy)
+						continue;
+				}
+				if (force) {
+					if (rc)
+						saved_rc = rc;
+					continue;
+				}
 				return rc;
 			}
 			ndctl_namespace_foreach_safe(region, ndns, _n) {
@@ -1398,7 +1430,10 @@ static int do_xaction_namespace(const char *namespace,
 						(*processed)++;
 					break;
 				case ACTION_CLEAR:
-					rc = namespace_clear_bb(ndns);
+					rc = namespace_clear_bb(ndns, do_scrub);
+
+					/* one scrub per bus is sufficient */
+					do_scrub = false;
 					if (rc == 0)
 						(*processed)++;
 					break;
@@ -1419,10 +1454,18 @@ static int do_xaction_namespace(const char *namespace,
 		/*
 		 * Namespace creation searched through all candidate
 		 * regions and all of them said "nope, I don't have
-		 * enough capacity", so report -ENOSPC
+		 * enough capacity", so report -ENOSPC. Except during
+		 * greedy namespace creation using --continue as we
+		 * may have created some namespaces already, and the
+		 * last one in the region search may preexist.
 		 */
-		rc = -ENOSPC;
+		if (param.greedy && (*processed) > 0)
+			rc = 0;
+		else
+			rc = -ENOSPC;
 	}
+	if (saved_rc)
+		rc = saved_rc;
 
 	return rc;
 }
@@ -1479,6 +1522,9 @@ int cmd_create_namespace(int argc, const char **argv, struct ndctl_ctx *ctx)
 		rc = do_xaction_namespace(NULL, ACTION_CREATE, ctx, &created);
 	}
 
+	if (param.greedy)
+		fprintf(stderr, "created %d namespace%s\n", created,
+			created == 1 ? "" : "s");
 	if (rc < 0 || (!namespace && created < 1)) {
 		fprintf(stderr, "failed to %s namespace: %s\n", namespace
 				? "reconfigure" : "create", strerror(-rc));

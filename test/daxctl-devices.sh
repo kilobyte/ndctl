@@ -18,6 +18,16 @@ find_testdev()
 {
 	local rc=77
 
+	# The kmem driver is needed to change the device mode, only
+	# kernels >= v5.1 might have it available. Skip if not.
+	if ! modinfo kmem; then
+		# check if kmem is builtin
+		if ! grep -qF "kmem" "/lib/modules/$(uname -r)/modules.builtin"; then
+			printf "Unable to find kmem module\n"
+			exit $rc
+		fi
+	fi
+
 	# find a victim device
 	testbus="$ACPI_BUS"
 	testdev=$("$NDCTL" list -b "$testbus" -Ni | jq -er '.[0].dev | .//""')

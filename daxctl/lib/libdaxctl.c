@@ -204,8 +204,9 @@ DAXCTL_EXPORT void daxctl_region_get_uuid(struct daxctl_region *region, uuid_t u
 
 static void free_mem(struct daxctl_dev *dev)
 {
-	if (dev && dev->mem) {
+	if (dev->mem) {
 		free(dev->mem->node_path);
+		free(dev->mem->mem_buf);
 		free(dev->mem);
 		dev->mem = NULL;
 	}
@@ -215,7 +216,7 @@ static void free_dev(struct daxctl_dev *dev, struct list_head *head)
 {
 	if (head)
 		list_del_from(head, &dev->list);
-	kmod_module_unref_list(dev->kmod_list);
+	kmod_module_unref(dev->module);
 	free(dev->dev_buf);
 	free(dev->dev_path);
 	free_mem(dev);
@@ -371,27 +372,6 @@ static bool device_model_is_dax_bus(struct daxctl_dev *dev)
 	return false;
 }
 
-static struct kmod_list *to_module_list(struct daxctl_ctx *ctx,
-		const char *alias)
-{
-	struct kmod_list *list = NULL;
-	int rc;
-
-	if (!ctx->kmod_ctx || !alias)
-		return NULL;
-	if (alias[0] == 0)
-		return NULL;
-
-	rc = kmod_module_new_from_lookup(ctx->kmod_ctx, alias, &list);
-	if (rc < 0 || !list) {
-		dbg(ctx, "failed to find modules for alias: %s %d list: %s\n",
-				alias, rc, list ? "populated" : "empty");
-		return NULL;
-	}
-
-	return list;
-}
-
 static int dev_is_system_ram_capable(struct daxctl_dev *dev)
 {
 	const char *devname = daxctl_dev_get_devname(dev);
@@ -406,7 +386,7 @@ static int dev_is_system_ram_capable(struct daxctl_dev *dev)
 	if (!daxctl_dev_is_enabled(dev))
 		return false;
 
-	if (snprintf(path, len, "%s/driver/module", dev->dev_path) >= len) {
+	if (snprintf(path, len, "%s/driver", dev->dev_path) >= len) {
 		err(ctx, "%s: buffer too small!\n", devname);
 		return false;
 	}
@@ -471,6 +451,7 @@ static struct daxctl_memory *daxctl_dev_alloc_mem(struct daxctl_dev *dev)
 		goto err_node;
 	mem->buf_len = strlen(node_base) + 256;
 
+	dev->mem = mem;
 	return mem;
 
 err_node:
@@ -489,7 +470,6 @@ static void *add_dax_dev(void *parent, int id, const char *daxdev_base)
 	struct daxctl_dev *dev, *dev_dup;
 	char buf[SYSFS_ATTR_SIZE];
 	struct stat st;
-	int rc;
 
 	if (!path)
 		return NULL;
@@ -526,14 +506,6 @@ static void *add_dax_dev(void *parent, int id, const char *daxdev_base)
 	if (!dev->dev_buf)
 		goto err_read;
 	dev->buf_len = strlen(daxdev_base) + 50;
-
-	sprintf(path, "%s/modalias", daxdev_base);
-	rc = sysfs_read_attr(ctx, path, buf);
-	/* older kernels may be lack the modalias attribute */
-	if (rc < 0 && rc != -ENOENT)
-		goto err_read;
-	if (rc == 0)
-		dev->kmod_list = to_module_list(ctx, buf);
 
 	sprintf(path, "%s/target_node", daxdev_base);
 	if (sysfs_read_attr(ctx, path, buf) == 0)
@@ -873,38 +845,29 @@ static int daxctl_insert_kmod_for_mode(struct daxctl_dev *dev,
 {
 	const char *devname = daxctl_dev_get_devname(dev);
 	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
-	struct kmod_list *iter;
-	int rc = -ENXIO;
+	struct kmod_module *kmod;
+	int rc;
 
-	if (dev->kmod_list == NULL) {
-		err(ctx, "%s: a modalias lookup list was not created\n",
-				devname);
+	rc = kmod_module_new_from_name(ctx->kmod_ctx, mod_name, &kmod);
+	if (rc < 0) {
+		err(ctx, "%s: failed getting module for: %s: %s\n",
+			devname, mod_name, strerror(-rc));
 		return rc;
 	}
 
-	kmod_list_foreach(iter, dev->kmod_list) {
-		struct kmod_module *mod = kmod_module_get_module(iter);
-		const char *name = kmod_module_get_name(mod);
-
-		if (strcmp(name, mod_name) != 0) {
-			kmod_module_unref(mod);
-			continue;
-		}
-		dbg(ctx, "%s inserting module: %s\n", devname, name);
-		rc = kmod_module_probe_insert_module(mod,
-				KMOD_PROBE_APPLY_BLACKLIST, NULL, NULL, NULL,
-				NULL);
-		if (rc < 0) {
-			err(ctx, "%s: insert failure: %d\n", devname, rc);
-			return rc;
-		}
-		dev->module = mod;
+	/* if the driver is builtin, this Just Works */
+	dbg(ctx, "%s inserting module: %s\n", devname,
+		kmod_module_get_name(kmod));
+	rc = kmod_module_probe_insert_module(kmod,
+			KMOD_PROBE_APPLY_BLACKLIST,
+			NULL, NULL, NULL, NULL);
+	if (rc < 0) {
+		err(ctx, "%s: insert failure: %d\n", devname, rc);
+		return rc;
 	}
+	dev->module = kmod;
 
-	if (rc == -ENXIO)
-		err(ctx, "%s: Unable to find module: %s in alias list\n",
-				devname, mod_name);
-	return rc;
+	return 0;
 }
 
 static int daxctl_dev_enable(struct daxctl_dev *dev, enum daxctl_dev_mode mode)
@@ -917,6 +880,7 @@ static int daxctl_dev_enable(struct daxctl_dev *dev, enum daxctl_dev_mode mode)
 
 	if (!device_model_is_dax_bus(dev)) {
 		err(ctx, "%s: error: device model is dax-class\n", devname);
+		err(ctx, "%s: see man daxctl-migrate-device-model\n", devname);
 		return -EOPNOTSUPP;
 	}
 
@@ -962,6 +926,7 @@ DAXCTL_EXPORT int daxctl_dev_disable(struct daxctl_dev *dev)
 
 	if (!device_model_is_dax_bus(dev)) {
 		err(ctx, "%s: error: device model is dax-class\n", devname);
+		err(ctx, "%s: see man daxctl-migrate-device-model\n", devname);
 		return -EOPNOTSUPP;
 	}
 
@@ -1082,86 +1047,23 @@ DAXCTL_EXPORT unsigned long daxctl_memory_get_block_size(struct daxctl_memory *m
 	return mem->block_size;
 }
 
-static int online_one_memblock(struct daxctl_dev *dev, char *path)
+static int memblock_is_online(struct daxctl_memory *mem, char *memblock)
 {
+	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
 	const char *devname = daxctl_dev_get_devname(dev);
 	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
-	const char *mode = "online_movable";
+	int len = mem->buf_len, rc;
 	char buf[SYSFS_ATTR_SIZE];
-	int rc;
+	char *path = mem->mem_buf;
+	const char *node_path;
 
-	rc = sysfs_read_attr(ctx, path, buf);
-	if (rc) {
-		err(ctx, "%s: Failed to read %s: %s\n",
-			devname, path, strerror(-rc));
-		return rc;
-	}
+	node_path = daxctl_memory_get_node_path(mem);
+	if (!node_path)
+		return -ENXIO;
 
-	/*
-	 * if already online, possibly due to kernel config or a udev rule,
-	 * there is nothing to do and we can skip over the memblock
-	 */
-	if (strncmp(buf, "online", 6) == 0)
-		return 1;
-
-	rc = sysfs_write_attr_quiet(ctx, path, mode);
-	if (rc) {
-		/*
-		 * While we performed an already-online check above, there
-		 * is still a TOCTOU hole where someone (such as a udev rule)
-		 * may have raced to online the memory. In such a case,
-		 * the sysfs store will fail, however we can check for this
-		 * by simply reading the state again. If it changed to the
-		 * desired state, then we don't have to error out.
-		 */
-		if (sysfs_read_attr(ctx, path, buf) == 0) {
-			if (strncmp(buf, "online", 6) == 0)
-				return 1;
-		}
-		err(ctx, "%s: Failed to online %s: %s\n",
-			devname, path, strerror(-rc));
-	}
-	return rc;
-}
-
-static int offline_one_memblock(struct daxctl_dev *dev, char *path)
-{
-	const char *devname = daxctl_dev_get_devname(dev);
-	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
-	const char *mode = "offline";
-	char buf[SYSFS_ATTR_SIZE];
-	int rc;
-
-	rc = sysfs_read_attr(ctx, path, buf);
-	if (rc) {
-		err(ctx, "%s: Failed to read %s: %s\n",
-			devname, path, strerror(-rc));
-		return rc;
-	}
-
-	/* if already offline, there is nothing to do */
-	if (strncmp(buf, "offline", 7) == 0)
-		return 1;
-
-	rc = sysfs_write_attr_quiet(ctx, path, mode);
-	if (rc) {
-		/* Close the TOCTOU hole like in online_one_memblock() above */
-		if (sysfs_read_attr(ctx, path, buf) == 0) {
-			if (strncmp(buf, "offline", 7) == 0)
-				return 1;
-		}
-		err(ctx, "%s: Failed to offline %s: %s\n",
-			devname, path, strerror(-rc));
-	}
-	return rc;
-}
-
-static int memblock_is_online(struct daxctl_dev *dev, char *path)
-{
-	const char *devname = daxctl_dev_get_devname(dev);
-	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
-	char buf[SYSFS_ATTR_SIZE];
-	int rc;
+	rc = snprintf(path, len, "%s/%s/state", node_path, memblock);
+	if (rc < 0)
+		return -ENOMEM;
 
 	rc = sysfs_read_attr(ctx, path, buf);
 	if (rc) {
@@ -1177,40 +1079,172 @@ static int memblock_is_online(struct daxctl_dev *dev, char *path)
 	return 0;
 }
 
-static bool memblock_in_dev(struct daxctl_memory *mem, const char *memblock)
+static int online_one_memblock(struct daxctl_memory *mem, char *memblock,
+		enum memory_zones zone, int *status)
+{
+	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
+	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	int len = mem->buf_len, rc;
+	char *path = mem->mem_buf;
+	const char *node_path;
+
+	node_path = daxctl_memory_get_node_path(mem);
+	if (!node_path)
+		return -ENXIO;
+
+	rc = snprintf(path, len, "%s/%s/state", node_path, memblock);
+	if (rc < 0)
+		return -ENOMEM;
+
+	rc = memblock_is_online(mem, memblock);
+	if (rc)
+		return rc;
+
+	switch (zone) {
+	case MEM_ZONE_MOVABLE:
+	case MEM_ZONE_NORMAL:
+		rc = sysfs_write_attr_quiet(ctx, path, state_strings[zone]);
+		break;
+	default:
+		rc = -EINVAL;
+	}
+	if (rc) {
+		/*
+		 * If the block got onlined, potentially by some other agent,
+		 * do nothing for now. There will be a full scan for zone
+		 * correctness later.
+		 */
+		if (memblock_is_online(mem, memblock) == 1)
+			return 0;
+	}
+
+	return rc;
+}
+
+static int offline_one_memblock(struct daxctl_memory *mem, char *memblock)
+{
+	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
+	const char *devname = daxctl_dev_get_devname(dev);
+	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	const char *mode = "offline";
+	int len = mem->buf_len, rc;
+	char *path = mem->mem_buf;
+	const char *node_path;
+
+	node_path = daxctl_memory_get_node_path(mem);
+	if (!node_path)
+		return -ENXIO;
+
+	rc = snprintf(path, len, "%s/%s/state", node_path, memblock);
+	if (rc < 0)
+		return -ENOMEM;
+
+	/* if already offline, there is nothing to do */
+	rc = memblock_is_online(mem, memblock);
+	if (rc < 0)
+		return rc;
+	if (!rc)
+		return 1;
+
+	rc = sysfs_write_attr_quiet(ctx, path, mode);
+	if (rc) {
+		/* check if something raced us to offline (unlikely) */
+		if (!memblock_is_online(mem, memblock))
+			return 1;
+		err(ctx, "%s: Failed to offline %s: %s\n",
+			devname, path, strerror(-rc));
+	}
+	return rc;
+}
+
+static int memblock_find_zone(struct daxctl_memory *mem, char *memblock,
+		int *status)
+{
+	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
+	const char *devname = daxctl_dev_get_devname(dev);
+	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	enum memory_zones cur_zone;
+	int len = mem->buf_len, rc;
+	char buf[SYSFS_ATTR_SIZE];
+	char *path = mem->mem_buf;
+	const char *node_path;
+
+	rc = memblock_is_online(mem, memblock);
+	if (rc < 0)
+		return rc;
+	if (rc == 0)
+		return -ENXIO;
+
+	node_path = daxctl_memory_get_node_path(mem);
+	if (!node_path)
+		return -ENXIO;
+
+	rc = snprintf(path, len, "%s/%s/valid_zones", node_path, memblock);
+	if (rc < 0)
+		return -ENOMEM;
+
+	rc = sysfs_read_attr(ctx, path, buf);
+	if (rc) {
+		err(ctx, "%s: Failed to read %s: %s\n",
+			devname, path, strerror(-rc));
+		return rc;
+	}
+
+	if (strcmp(buf, zone_strings[MEM_ZONE_MOVABLE]) == 0)
+		cur_zone = MEM_ZONE_MOVABLE;
+	else if (strcmp(buf, zone_strings[MEM_ZONE_NORMAL]) == 0)
+		cur_zone = MEM_ZONE_NORMAL;
+	else
+		cur_zone = MEM_ZONE_UNKNOWN;
+
+	if (mem->zone) {
+		if (mem->zone == cur_zone)
+			return 0;
+		else
+			*status |= MEM_ST_ZONE_INCONSISTENT;
+	} else {
+		mem->zone = cur_zone;
+	}
+
+	return 0;
+}
+
+static int memblock_in_dev(struct daxctl_memory *mem, const char *memblock)
 {
 	const char *mem_base = "/sys/devices/system/memory/";
 	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
 	unsigned long long memblock_res, dev_start, dev_end;
 	const char *devname = daxctl_dev_get_devname(dev);
 	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	int rc, path_len = mem->buf_len;
 	unsigned long memblock_size;
-	int path_len = mem->buf_len;
 	char buf[SYSFS_ATTR_SIZE];
 	unsigned long phys_index;
 	char *path = mem->mem_buf;
 
 	if (snprintf(path, path_len, "%s/%s/phys_index",
 			mem_base, memblock) < 0)
-		return false;
+		return -ENXIO;
 
-	if (sysfs_read_attr(ctx, path, buf) == 0) {
+	rc = sysfs_read_attr(ctx, path, buf);
+	if (rc == 0) {
 		phys_index = strtoul(buf, NULL, 16);
 		if (phys_index == 0 || phys_index == ULONG_MAX) {
+			rc = -errno;
 			err(ctx, "%s: %s: Unable to determine phys_index: %s\n",
-				devname, memblock, strerror(errno));
-			return false;
+				devname, memblock, strerror(-rc));
+			return rc;
 		}
 	} else {
 		err(ctx, "%s: %s: Unable to determine phys_index: %s\n",
-			devname, memblock, strerror(errno));
-		return false;
+			devname, memblock, strerror(-rc));
+		return rc;
 	}
 
 	dev_start = daxctl_dev_get_resource(dev);
 	if (!dev_start) {
 		err(ctx, "%s: Unable to determine resource\n", devname);
-		return false;
+		return -EACCES;
 	}
 	dev_end = dev_start + daxctl_dev_get_size(dev);
 
@@ -1218,18 +1252,18 @@ static bool memblock_in_dev(struct daxctl_memory *mem, const char *memblock)
 	if (!memblock_size) {
 		err(ctx, "%s: Unable to determine memory block size\n",
 			devname);
-		return false;
+		return -ENXIO;
 	}
 	memblock_res = phys_index * memblock_size;
 
 	if (memblock_res >= dev_start && memblock_res <= dev_end)
-		return true;
+		return 1;
 
-	return false;
+	return 0;
 }
 
-static int op_for_one_memblock(struct daxctl_memory *mem, char *path,
-		enum memory_op op)
+static int op_for_one_memblock(struct daxctl_memory *mem, char *memblock,
+		enum memory_op op, int *status)
 {
 	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
 	const char *devname = daxctl_dev_get_devname(dev);
@@ -1238,11 +1272,15 @@ static int op_for_one_memblock(struct daxctl_memory *mem, char *path,
 
 	switch (op) {
 	case MEM_SET_ONLINE:
-		return online_one_memblock(dev, path);
+		return online_one_memblock(mem, memblock, MEM_ZONE_MOVABLE,
+				status);
+	case MEM_SET_ONLINE_NO_MOVABLE:
+		return online_one_memblock(mem, memblock, MEM_ZONE_NORMAL,
+				status);
 	case MEM_SET_OFFLINE:
-		return offline_one_memblock(dev, path);
+		return offline_one_memblock(mem, memblock);
 	case MEM_IS_ONLINE:
-		rc = memblock_is_online(dev, path);
+		rc = memblock_is_online(mem, memblock);
 		if (rc < 0)
 			return rc;
 		/*
@@ -1252,6 +1290,8 @@ static int op_for_one_memblock(struct daxctl_memory *mem, char *path,
 		return !rc;
 	case MEM_COUNT:
 		return 0;
+	case MEM_GET_ZONE:
+		return memblock_find_zone(mem, memblock, status);
 	}
 
 	err(ctx, "%s: BUG: unknown op: %d\n", devname, op);
@@ -1263,8 +1303,8 @@ static int daxctl_memory_op(struct daxctl_memory *mem, enum memory_op op)
 	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
 	const char *devname = daxctl_dev_get_devname(dev);
 	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	int rc, count = 0, status_flags = 0;
 	const char *node_path;
-	int rc, count = 0;
 	struct dirent *de;
 	DIR *node_dir;
 
@@ -1280,19 +1320,15 @@ static int daxctl_memory_op(struct daxctl_memory *mem, enum memory_op op)
 
 	errno = 0;
 	while ((de = readdir(node_dir)) != NULL) {
-		char *path = mem->mem_buf;
-		int len = mem->buf_len;
-
 		if (strncmp(de->d_name, "memory", 6) == 0) {
-			if (!memblock_in_dev(mem, de->d_name))
-				continue;
-			rc = snprintf(path, len, "%s/%s/state",
-				node_path, de->d_name);
-			if (rc < 0) {
-				rc = -ENOMEM;
+			rc = memblock_in_dev(mem, de->d_name);
+			if (rc < 0)
 				goto out_dir;
-			}
-			rc = op_for_one_memblock(mem, path, op);
+			if (rc == 0) /* memblock not in dev */
+				continue;
+			/* memblock is in dev, perform op */
+			rc = op_for_one_memblock(mem, de->d_name, op,
+					&status_flags);
 			if (rc < 0)
 				goto out_dir;
 			if (rc == 0)
@@ -1300,6 +1336,10 @@ static int daxctl_memory_op(struct daxctl_memory *mem, enum memory_op op)
 		}
 		errno = 0;
 	}
+
+	if (status_flags & MEM_ST_ZONE_INCONSISTENT)
+		mem->zone = MEM_ZONE_UNKNOWN;
+
 	if (errno) {
 		rc = -errno;
 		goto out_dir;
@@ -1311,9 +1351,59 @@ out_dir:
 	return rc;
 }
 
+/*
+ * daxctl_memory_online() will online to ZONE_MOVABLE by default
+ */
+static int daxctl_memory_online_with_zone(struct daxctl_memory *mem,
+		enum memory_zones zone)
+{
+	struct daxctl_dev *dev = daxctl_memory_get_dev(mem);
+	const char *devname = daxctl_dev_get_devname(dev);
+	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	int rc;
+
+	switch (zone) {
+	case MEM_ZONE_MOVABLE:
+		rc = daxctl_memory_op(mem, MEM_SET_ONLINE);
+		break;
+	case MEM_ZONE_NORMAL:
+		rc = daxctl_memory_op(mem, MEM_SET_ONLINE_NO_MOVABLE);
+		break;
+	default:
+		err(ctx, "%s: BUG: invalid zone for onlining\n", devname);
+		rc = -EINVAL;
+	}
+	if (rc)
+		return rc;
+
+	/*
+	 * Detect any potential races when blocks were being brought online by
+	 * checking the zone in which the memory blocks are at this point. If
+	 * any of the blocks are not in ZONE_MOVABLE, emit a warning.
+	 */
+	mem->zone = 0;
+	rc = daxctl_memory_op(mem, MEM_GET_ZONE);
+	if (rc)
+		return rc;
+	if (mem->zone != zone) {
+		err(ctx,
+		    "%s:\n  WARNING: detected a race while onlining memory\n"
+		    "  See 'man daxctl-reconfigure-device' for more details\n",
+		    devname);
+		return -EBUSY;
+	}
+
+	return rc;
+}
+
 DAXCTL_EXPORT int daxctl_memory_online(struct daxctl_memory *mem)
 {
-	return daxctl_memory_op(mem, MEM_SET_ONLINE);
+	return daxctl_memory_online_with_zone(mem, MEM_ZONE_MOVABLE);
+}
+
+DAXCTL_EXPORT int daxctl_memory_online_no_movable(struct daxctl_memory *mem)
+{
+	return daxctl_memory_online_with_zone(mem, MEM_ZONE_NORMAL);
 }
 
 DAXCTL_EXPORT int daxctl_memory_offline(struct daxctl_memory *mem)
@@ -1329,4 +1419,16 @@ DAXCTL_EXPORT int daxctl_memory_is_online(struct daxctl_memory *mem)
 DAXCTL_EXPORT int daxctl_memory_num_sections(struct daxctl_memory *mem)
 {
 	return daxctl_memory_op(mem, MEM_COUNT);
+}
+
+DAXCTL_EXPORT int daxctl_memory_is_movable(struct daxctl_memory *mem)
+{
+	int rc;
+
+	/* Start a fresh zone scan, clear any previous info */
+	mem->zone = 0;
+	rc = daxctl_memory_op(mem, MEM_GET_ZONE);
+	if (rc < 0)
+		return rc;
+	return (mem->zone == MEM_ZONE_MOVABLE) ? 1 : 0;
 }

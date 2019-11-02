@@ -260,6 +260,12 @@ struct json_object *util_dimm_to_json(struct ndctl_dimm *dimm,
 	if (jobj)
 		json_object_object_add(jdimm, "security", jobj);
 
+	if (ndctl_dimm_security_is_frozen(dimm)) {
+		jobj = json_object_new_boolean(true);
+		if (jobj)
+			json_object_object_add(jdimm, "security_frozen", jobj);
+	}
+
 	return jdimm;
  err:
 	json_object_put(jdimm);
@@ -272,7 +278,7 @@ struct json_object *util_daxctl_dev_to_json(struct daxctl_dev *dev,
 	struct daxctl_memory *mem = daxctl_dev_get_memory(dev);
 	const char *devname = daxctl_dev_get_devname(dev);
 	struct json_object *jdev, *jobj;
-	int node;
+	int node, movable;
 
 	jdev = json_object_new_object();
 	if (!devname || !jdev)
@@ -299,6 +305,18 @@ struct json_object *util_daxctl_dev_to_json(struct daxctl_dev *dev,
 		jobj = json_object_new_string("devdax");
 	if (jobj)
 		json_object_object_add(jdev, "mode", jobj);
+
+	if (mem) {
+		movable = daxctl_memory_is_movable(mem);
+		if (movable == 1)
+			jobj = json_object_new_boolean(true);
+		else if (movable == 0)
+			jobj = json_object_new_boolean(false);
+		else
+			jobj = NULL;
+		if (jobj)
+			json_object_object_add(jdev, "movable", jobj);
+	}
 
 	if (!daxctl_dev_is_enabled(dev)) {
 		jobj = json_object_new_string("disabled");
