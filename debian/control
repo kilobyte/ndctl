@@ -10,7 +10,6 @@ Build-Depends: debhelper-compat (= 12),
                uuid-dev,
                libjson-c-dev,
                bash-completion,
-               systemd,
                libkeyutils-dev,
                asciidoctor
 Rules-Requires-Root: no
