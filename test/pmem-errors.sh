@@ -6,7 +6,7 @@ MNT=test_dax_mnt
 FILE=image
 rc=77
 
-. ./common
+. $(dirname $0)/common
 
 cleanup()
 {
@@ -46,7 +46,7 @@ err_sector="$(((size/512) / 2))"
 err_count=8
 if ! read sector len < /sys/block/$blockdev/badblocks; then
 	$NDCTL inject-error --block="$err_sector" --count=$err_count $dev
-	$NDCTL start-scrub; $NDCTL wait-scrub
+	$NDCTL start-scrub $NFIT_TEST_BUS0; $NDCTL wait-scrub $NFIT_TEST_BUS0
 fi
 read sector len < /sys/block/$blockdev/badblocks
 [ $((sector * 2)) -ne $((size /512)) ] && echo "fail: $LINENO" && false
@@ -113,14 +113,7 @@ echo $((start_sect + 1)) 1 > /sys/block/$blockdev/badblocks
 : The following 'dd' is expected to hit an I/O Error
 dd if=$MNT/$FILE of=/dev/null iflag=direct bs=4096 count=1 && err $LINENO || true
 
-# cleanup
-rm -f $FILE
-rm -f $MNT/$FILE
-if [ -n "$blockdev" ]; then
-	umount /dev/$blockdev
-fi
-rmdir $MNT
-
+cleanup
 _cleanup
 
 exit 0

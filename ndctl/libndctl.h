@@ -372,6 +372,8 @@ struct ndctl_namespace *ndctl_region_get_namespace_seed(
 		struct ndctl_region *region);
 int ndctl_region_get_ro(struct ndctl_region *region);
 int ndctl_region_set_ro(struct ndctl_region *region, int ro);
+unsigned long ndctl_region_get_align(struct ndctl_region *region);
+int ndctl_region_set_align(struct ndctl_region *region, unsigned long align);
 unsigned long long ndctl_region_get_resource(struct ndctl_region *region);
 struct ndctl_btt *ndctl_region_get_btt_seed(struct ndctl_region *region);
 struct ndctl_pfn *ndctl_region_get_pfn_seed(struct ndctl_region *region);
@@ -383,6 +385,7 @@ struct ndctl_dimm *ndctl_region_get_first_dimm(struct ndctl_region *region);
 struct ndctl_dimm *ndctl_region_get_next_dimm(struct ndctl_region *region,
 		struct ndctl_dimm *dimm);
 int ndctl_region_get_numa_node(struct ndctl_region *region);
+int ndctl_region_get_target_node(struct ndctl_region *region);
 struct ndctl_region *ndctl_bus_get_region_by_physical_address(struct ndctl_bus *bus,
 		unsigned long long address);
 #define ndctl_dimm_foreach_in_region(region, dimm) \
@@ -472,6 +475,7 @@ enum ndctl_namespace_mode {
 	NDCTL_NS_MODE_MEMORY,
 	NDCTL_NS_MODE_FSDAX = NDCTL_NS_MODE_MEMORY,
 	NDCTL_NS_MODE_SAFE,
+	NDCTL_NS_MODE_SECTOR = NDCTL_NS_MODE_SAFE,
 	NDCTL_NS_MODE_RAW,
 	NDCTL_NS_MODE_DAX,
 	NDCTL_NS_MODE_DEVDAX = NDCTL_NS_MODE_DAX,
@@ -491,6 +495,7 @@ int ndctl_namespace_disable_safe(struct ndctl_namespace *ndns);
 bool ndctl_namespace_is_active(struct ndctl_namespace *ndns);
 int ndctl_namespace_is_valid(struct ndctl_namespace *ndns);
 int ndctl_namespace_is_configured(struct ndctl_namespace *ndns);
+int ndctl_namespace_is_configuration_idle(struct ndctl_namespace *ndns);
 int ndctl_namespace_delete(struct ndctl_namespace *ndns);
 int ndctl_namespace_set_uuid(struct ndctl_namespace *ndns, uuid_t uu);
 void ndctl_namespace_get_uuid(struct ndctl_namespace *ndns, uuid_t uu);
@@ -510,6 +515,7 @@ int ndctl_namespace_set_sector_size(struct ndctl_namespace *ndns,
 int ndctl_namespace_get_raw_mode(struct ndctl_namespace *ndns);
 int ndctl_namespace_set_raw_mode(struct ndctl_namespace *ndns, int raw_mode);
 int ndctl_namespace_get_numa_node(struct ndctl_namespace *ndns);
+int ndctl_namespace_get_target_node(struct ndctl_namespace *ndns);
 int ndctl_namespace_inject_error(struct ndctl_namespace *ndns,
 		unsigned long long block, unsigned long long count,
 		bool notify);

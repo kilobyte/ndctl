@@ -37,6 +37,7 @@ static struct {
 	bool human;
 	bool firmware;
 	bool capabilities;
+	bool configured;
 	int verbose;
 } list;
 
@@ -46,6 +47,8 @@ static unsigned long listopts_to_flags(void)
 
 	if (list.idle)
 		flags |= UTIL_JSON_IDLE;
+	if (list.configured)
+		flags |= UTIL_JSON_CONFIGURED;
 	if (list.media_errors)
 		flags |= UTIL_JSON_MEDIA_ERRORS;
 	if (list.dax)
@@ -59,7 +62,7 @@ static unsigned long listopts_to_flags(void)
 	return flags;
 }
 
-struct util_filter_params param;
+static struct util_filter_params param;
 
 static int did_fail;
 
@@ -78,9 +81,9 @@ static struct json_object *region_to_json(struct ndctl_region *region,
 	struct ndctl_interleave_set *iset;
 	struct ndctl_mapping *mapping;
 	unsigned int bb_count = 0;
-	unsigned long long extent;
+	unsigned long long extent, align;
 	enum ndctl_persistence_domain pd;
-	int numa;
+	int numa, target;
 
 	if (!jregion)
 		return NULL;
@@ -94,6 +97,14 @@ static struct json_object *region_to_json(struct ndctl_region *region,
 	if (!jobj)
 		goto err;
 	json_object_object_add(jregion, "size", jobj);
+
+	align = ndctl_region_get_align(region);
+	if (align < ULLONG_MAX) {
+		jobj = util_json_object_size(align, flags);
+		if (!jobj)
+			goto err;
+		json_object_object_add(jregion, "align", jobj);
+	}
 
 	jobj = util_json_object_size(ndctl_region_get_available_size(region),
 			flags);
@@ -130,6 +141,13 @@ static struct json_object *region_to_json(struct ndctl_region *region,
 			json_object_object_add(jregion, "numa_node", jobj);
 	}
 
+	target = ndctl_region_get_target_node(region);
+	if (target >= 0 && flags & UTIL_JSON_VERBOSE) {
+		jobj = json_object_new_int(target);
+		if (jobj)
+			json_object_object_add(jregion, "target_node", jobj);
+	}
+
 	iset = ndctl_region_get_interleave_set(region);
 	if (iset) {
 		jobj = util_json_object_hex(
@@ -150,7 +168,8 @@ static struct json_object *region_to_json(struct ndctl_region *region,
 		if (!util_dimm_filter(dimm, param.dimm))
 			continue;
 
-		if (!list.idle && !ndctl_dimm_is_enabled(dimm))
+		if (!list.configured && !list.idle
+				&& !ndctl_dimm_is_enabled(dimm))
 			continue;
 
 		if (!jmappings) {
@@ -227,8 +246,15 @@ static void filter_namespace(struct ndctl_namespace *ndns,
 	struct json_object *jndns;
 	struct list_filter_arg *lfa = ctx->list;
 	struct json_object *container = lfa->jregion ? lfa->jregion : lfa->jbus;
+	unsigned long long size = ndctl_namespace_get_size(ndns);
 
-	if (!list.idle && !ndctl_namespace_is_active(ndns))
+	if (ndctl_namespace_is_active(ndns))
+		/* pass */;
+	else if (list.idle)
+		/* pass */;
+	else if (list.configured && (size > 0 && size < ULLONG_MAX))
+		/* pass */;
+	else
 		return;
 
 	if (!lfa->jnamespaces) {
@@ -262,7 +288,7 @@ static bool filter_region(struct ndctl_region *region,
 	if (!list.regions)
 		return true;
 
-	if (!list.idle && !ndctl_region_is_enabled(region))
+	if (!list.configured && !list.idle && !ndctl_region_is_enabled(region))
 		return true;
 
 	if (!lfa->jregions) {
@@ -304,7 +330,7 @@ static void filter_dimm(struct ndctl_dimm *dimm, struct util_filter_ctx *ctx)
 	struct list_filter_arg *lfa = ctx->list;
 	struct json_object *jdimm;
 
-	if (!list.idle && !ndctl_dimm_is_enabled(dimm))
+	if (!list.configured && !list.idle && !ndctl_dimm_is_enabled(dimm))
 		return;
 
 	if (!lfa->jdimms) {
@@ -462,6 +488,8 @@ int cmd_list(int argc, const char **argv, struct ndctl_ctx *ctx)
 		OPT_BOOLEAN('C', "capabilities", &list.capabilities,
 				"include region capability info"),
 		OPT_BOOLEAN('i', "idle", &list.idle, "include idle devices"),
+		OPT_BOOLEAN('c', "configured", &list.configured,
+				"include configured namespaces, disabled or not"),
 		OPT_BOOLEAN('M', "media-errors", &list.media_errors,
 				"include media errors"),
 		OPT_BOOLEAN('u', "human", &list.human,
@@ -474,6 +502,7 @@ int cmd_list(int argc, const char **argv, struct ndctl_ctx *ctx)
 		"ndctl list [<options>]",
 		NULL
 	};
+	bool lint = !!secure_getenv("NDCTL_LIST_LINT");
 	struct util_filter_ctx fctx = { 0 };
 	struct list_filter_arg lfa = { 0 };
 	int i, rc;
@@ -500,12 +529,20 @@ int cmd_list(int argc, const char **argv, struct ndctl_ctx *ctx)
 		list.health = true;
 		list.capabilities = true;
 	case 2:
-		list.dimms = true;
-		list.buses = true;
-		list.regions = true;
+		if (!lint) {
+			list.dimms = true;
+			list.buses = true;
+			list.regions = true;
+		} else if (num_list_flags() == 0) {
+			list.dimms = true;
+			list.buses = true;
+			list.regions = true;
+			list.namespaces = true;
+		}
 	case 1:
 		list.media_errors = true;
-		list.namespaces = true;
+		if (!lint)
+			list.namespaces = true;
 		list.dax = true;
 	case 0:
 		break;

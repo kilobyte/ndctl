@@ -16,14 +16,14 @@ FILE=image
 blockdev=""
 rc=77
 
-. ./common
+. $(dirname $0)/common
 
 cleanup()
 {
 	rm -f $FILE
 	rm -f $MNT/$FILE
-	if [ -n "$blockdev" ]; then
-		umount "/dev/$blockdev"
+	if grep -q "$MNT" /proc/mounts; then
+		umount $MNT
 	else
 		rc=77
 	fi
@@ -115,7 +115,7 @@ bb_inj=$((dataoff/512))
 
 # inject badblocks for one page at the start of the file
 $NDCTL inject-error --block="$bb_inj" --count=8 $dev
-$NDCTL start-scrub && $NDCTL wait-scrub
+$NDCTL start-scrub $NFIT_TEST_BUS0 && $NDCTL wait-scrub $NFIT_TEST_BUS0
 
 force_raw 0
 mount -o nodelalloc "/dev/$blockdev" $MNT
@@ -149,7 +149,7 @@ map=$(hexdump -s 96 -n 4 "/dev/$raw_bdev" | head -1 | cut -d' ' -f2-)
 map=$(tr -d ' ' <<< "0x${map#* }${map%% *}")
 bb_inj=$((map/512))
 $NDCTL inject-error --block="$bb_inj" --count=1 $dev
-$NDCTL start-scrub && $NDCTL wait-scrub
+$NDCTL start-scrub $NFIT_TEST_BUS0 && $NDCTL wait-scrub $NFIT_TEST_BUS0
 force_raw 0
 
 # make sure reading the first block of the namespace fails
@@ -160,5 +160,6 @@ dd if=/dev/$blockdev of=/dev/null iflag=direct bs=4096 count=1 && err $LINENO ||
 $NDCTL disable-region -b $NFIT_TEST_BUS0 all
 $NDCTL zero-labels -b $NFIT_TEST_BUS0 all
 $NDCTL enable-region -b $NFIT_TEST_BUS0 all
+cleanup
 _cleanup
 exit 0

@@ -13,6 +13,10 @@ version.m4: FORCE
 
 FORCE:
 
+EXTRA_DIST += ndctl.spec.in \
+		sles/header \
+		contrib/nvdimm-security.conf
+
 noinst_SCRIPTS = rhel/ndctl.spec sles/ndctl.spec
 CLEANFILES += $(noinst_SCRIPTS)
 
@@ -34,7 +38,7 @@ do_sles_subst = sed -e 's,VERSION,$(VERSION),g' \
 rhel/ndctl.spec: ndctl.spec.in Makefile.am version.m4
 	$(AM_V_GEN)$(MKDIR_P) rhel; $(do_rhel_subst) < $< > $@
 
-sles/ndctl.spec: ndctl.spec.in Makefile.am version.m4
+sles/ndctl.spec: sles/header ndctl.spec.in Makefile.am version.m4
 	$(AM_V_GEN)$(MKDIR_P) sles; cat sles/header $< | $(do_sles_subst) > $@
 
 if ENABLE_BASH_COMPLETION
@@ -75,6 +79,12 @@ libutil_a_SOURCES = \
 	util/filter.c \
 	util/bitmap.c \
 	util/abspath.c \
-	util/iomem.c
+	util/iomem.c \
+	util/util.h \
+	util/strbuf.h \
+	util/size.h \
+	util/main.h \
+	util/filter.h \
+	util/bitmap.h
 
 nobase_include_HEADERS = daxctl/libdaxctl.h

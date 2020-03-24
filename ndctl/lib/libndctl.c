@@ -135,6 +135,7 @@ struct ndctl_mapping {
  * @generation: incremented everytime the region is disabled
  * @nstype: the resulting type of namespace this region produces
  * @numa_node: numa node attribute
+ * @target_node: target node were this region to be onlined
  *
  * A region may alias between pmem and block-window access methods.  The
  * region driver is tasked with parsing the label (if their is one) and
@@ -149,6 +150,7 @@ struct ndctl_region {
 	struct kmod_module *module;
 	struct ndctl_bus *bus;
 	int id, num_mappings, nstype, range_index, ro;
+	unsigned long align;
 	int mappings_init;
 	int namespaces_init;
 	int btts_init;
@@ -160,7 +162,7 @@ struct ndctl_region {
 	char *region_buf;
 	int buf_len;
 	int generation;
-	int numa_node;
+	int numa_node, target_node;
 	struct list_head btts;
 	struct list_head pfns;
 	struct list_head daxs;
@@ -1106,6 +1108,44 @@ NDCTL_EXPORT int ndctl_region_set_ro(struct ndctl_region *region, int ro)
 
 	region->ro = ro;
 	return ro;
+}
+
+NDCTL_EXPORT unsigned long ndctl_region_get_align(struct ndctl_region *region)
+{
+	return region->align;
+}
+
+/**
+ * ndctl_region_set_align() - Align namespace dpa allocations to @align
+ * @region: region to modify
+ * @align: alignment that must be a power-of-2 and >= the platform minimum
+ *
+ * WARNING: setting the region align value to anything less than the
+ * kernel default (16M) may result in namespaces that are not cross-arch
+ * (PowerPC) compatible. The minimum alignment for raw mode namespaces
+ * is PAGE_SIZE.
+ */
+NDCTL_EXPORT int ndctl_region_set_align(struct ndctl_region *region,
+		unsigned long align)
+{
+	struct ndctl_ctx *ctx = ndctl_region_get_ctx(region);
+	char *path = region->region_buf;
+	int len = region->buf_len, rc;
+	char buf[SYSFS_ATTR_SIZE];
+
+	if (snprintf(path, len, "%s/align", region->region_path) >= len) {
+		err(ctx, "%s: buffer too small!\n",
+				ndctl_region_get_devname(region));
+		return -ENXIO;
+	}
+
+	sprintf(buf, "%#lx\n", align);
+	rc = sysfs_write_attr(ctx, path, buf);
+	if (rc < 0)
+		return rc;
+
+	region->align = align;
+	return 0;
 }
 
 NDCTL_EXPORT unsigned long long ndctl_region_get_resource(struct ndctl_region *region)
@@ -2151,6 +2191,18 @@ static void *add_region(void *parent, int id, const char *region_base)
 	else
 		region->numa_node = -1;
 
+	sprintf(path, "%s/target_node", region_base);
+	if (sysfs_read_attr(ctx, path, buf) == 0)
+		region->target_node = strtol(buf, NULL, 0);
+	else
+		region->target_node = -1;
+
+	sprintf(path, "%s/align", region_base);
+	if (sysfs_read_attr(ctx, path, buf) == 0)
+		region->align = strtoul(buf, NULL, 0);
+	else
+		region->align = ULONG_MAX;
+
 	if (region_set_type(region, path) < 0)
 		goto err_read;
 
@@ -2424,6 +2476,11 @@ NDCTL_EXPORT int ndctl_region_get_numa_node(struct ndctl_region *region)
 	return region->numa_node;
 }
 
+NDCTL_EXPORT int ndctl_region_get_target_node(struct ndctl_region *region)
+{
+	return region->target_node;
+}
+
 NDCTL_EXPORT struct badblock *ndctl_region_get_next_badblock(struct ndctl_region *region)
 {
 	return badblocks_iter_next(&region->bb_iter);
@@ -2447,6 +2504,53 @@ static struct nd_cmd_vendor_tail *to_vendor_tail(struct ndctl_cmd *cmd)
 		(cmd->cmd_buf + sizeof(struct nd_cmd_vendor_hdr)
 		 + cmd->vendor->in_length);
 	return tail;
+}
+
+static u32 cmd_get_firmware_status(struct ndctl_cmd *cmd)
+{
+	switch (cmd->type) {
+	case ND_CMD_VENDOR:
+		return to_vendor_tail(cmd)->status;
+	case ND_CMD_GET_CONFIG_SIZE:
+		return cmd->get_size->status;
+	case ND_CMD_GET_CONFIG_DATA:
+		return cmd->get_data->status;
+	case ND_CMD_SET_CONFIG_DATA:
+		return *(u32 *) (cmd->cmd_buf
+				+ sizeof(struct nd_cmd_set_config_hdr)
+				+ cmd->iter.max_xfer);
+	}
+	return -1U;
+}
+
+static void cmd_set_xfer(struct ndctl_cmd *cmd, u32 xfer)
+{
+	if (cmd->type == ND_CMD_GET_CONFIG_DATA)
+		cmd->get_data->in_length = xfer;
+	else
+		cmd->set_data->in_length = xfer;
+}
+
+static u32 cmd_get_xfer(struct ndctl_cmd *cmd)
+{
+	if (cmd->type == ND_CMD_GET_CONFIG_DATA)
+		return cmd->get_data->in_length;
+	return cmd->set_data->in_length;
+}
+
+static void cmd_set_offset(struct ndctl_cmd *cmd, u32 offset)
+{
+	if (cmd->type == ND_CMD_GET_CONFIG_DATA)
+		cmd->get_data->in_offset = offset;
+	else
+		cmd->set_data->in_offset = offset;
+}
+
+static u32 cmd_get_offset(struct ndctl_cmd *cmd)
+{
+	if (cmd->type == ND_CMD_GET_CONFIG_DATA)
+		return cmd->get_data->in_offset;
+	return cmd->set_data->in_offset;
 }
 
 NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_vendor_specific(
@@ -2478,7 +2582,7 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_vendor_specific(
 	cmd->status = 1;
 	cmd->vendor->opcode = opcode;
 	cmd->vendor->in_length = input_size;
-	cmd->firmware_status = &to_vendor_tail(cmd)->status;
+	cmd->get_firmware_status = cmd_get_firmware_status;
 	to_vendor_tail(cmd)->out_length = output_size;
 
 	return cmd;
@@ -2543,7 +2647,7 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_size(struct ndctl_dimm *di
 	cmd->type = ND_CMD_GET_CONFIG_SIZE;
 	cmd->size = size;
 	cmd->status = 1;
-	cmd->firmware_status = &cmd->get_size->status;
+	cmd->get_firmware_status = cmd_get_firmware_status;
 
 	return cmd;
 }
@@ -2584,10 +2688,12 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_read(struct ndctl_cmd *cfg
 	cmd->status = 1;
 	cmd->get_data->in_offset = 0;
 	cmd->get_data->in_length = cfg_size->get_size->max_xfer;
-	cmd->firmware_status = &cmd->get_data->status;
+	cmd->get_firmware_status = cmd_get_firmware_status;
+	cmd->get_xfer = cmd_get_xfer;
+	cmd->set_xfer = cmd_set_xfer;
+	cmd->get_offset = cmd_get_offset;
+	cmd->set_offset = cmd_set_offset;
 	cmd->iter.init_offset = 0;
-	cmd->iter.offset = &cmd->get_data->in_offset;
-	cmd->iter.xfer = &cmd->get_data->in_length;
 	cmd->iter.max_xfer = cfg_size->get_size->max_xfer;
 	cmd->iter.data = cmd->get_data->out_buf;
 	cmd->iter.total_xfer = cfg_size->get_size->config_size;
@@ -2606,9 +2712,11 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_read(struct ndctl_cmd *cfg
 static void iter_set_extent(struct ndctl_cmd_iter *iter, unsigned int len,
 		unsigned int offset)
 {
+	struct ndctl_cmd *cmd = container_of(iter, typeof(*cmd), iter);
+
 	iter->init_offset = offset;
-	*iter->offset = offset;
-	*iter->xfer = min(iter->max_xfer, len);
+	cmd->set_offset(cmd, offset);
+	cmd->set_xfer(cmd, min(cmd->get_xfer(cmd), len));
 	iter->total_xfer = len;
 }
 
@@ -2671,11 +2779,12 @@ NDCTL_EXPORT struct ndctl_cmd *ndctl_dimm_cmd_new_cfg_write(struct ndctl_cmd *cf
 	cmd->status = 1;
 	cmd->set_data->in_offset = cfg_read->iter.init_offset;
 	cmd->set_data->in_length = cfg_read->iter.max_xfer;
-	cmd->firmware_status = (u32 *) (cmd->cmd_buf
-		+ sizeof(struct nd_cmd_set_config_hdr) + cfg_read->iter.max_xfer);
+	cmd->get_firmware_status = cmd_get_firmware_status;
+	cmd->get_xfer = cmd_get_xfer;
+	cmd->set_xfer = cmd_set_xfer;
+	cmd->get_offset = cmd_get_offset;
+	cmd->set_offset = cmd_set_offset;
 	cmd->iter.init_offset = cfg_read->iter.init_offset;
-	cmd->iter.offset = &cmd->set_data->in_offset;
-	cmd->iter.xfer = &cmd->set_data->in_length;
 	cmd->iter.max_xfer = cfg_read->iter.max_xfer;
 	cmd->iter.data = cmd->set_data->in_buf;
 	cmd->iter.total_xfer = cfg_read->iter.total_xfer;
@@ -2879,7 +2988,7 @@ static int do_cmd(int fd, int ioctl_cmd, struct ndctl_cmd *cmd)
 		dbg(ctx, "bus: %d dimm: %#x cmd: %s%s%s status: %d fw: %d (%s)\n",
 				bus->id, dimm ? ndctl_dimm_get_handle(dimm) : 0,
 				name, sub_name ? ":" : "", sub_name ? sub_name : "",
-				rc, *(cmd->firmware_status), rc < 0 ?
+				rc, cmd->get_firmware_status(cmd), rc < 0 ?
 				strerror(errno) : "success");
 		if (rc < 0)
 			return -errno;
@@ -2888,12 +2997,12 @@ static int do_cmd(int fd, int ioctl_cmd, struct ndctl_cmd *cmd)
 	}
 
 	for (offset = 0; offset < iter->total_xfer; offset += iter->max_xfer) {
-		*(cmd->iter.xfer) = min(iter->total_xfer - offset,
-				iter->max_xfer);
-		*(cmd->iter.offset) = offset;
+		cmd->set_xfer(cmd, min(iter->total_xfer - offset,
+				iter->max_xfer));
+		cmd->set_offset(cmd, offset);
 		if (iter->dir == WRITE)
 			memcpy(iter->data, iter->total_buf + offset,
-					*(cmd->iter.xfer));
+					cmd->get_xfer(cmd));
 		rc = ioctl(fd, ioctl_cmd, cmd->cmd_buf);
 		if (rc < 0) {
 			rc = -errno;
@@ -2902,9 +3011,9 @@ static int do_cmd(int fd, int ioctl_cmd, struct ndctl_cmd *cmd)
 
 		if (iter->dir == READ)
 			memcpy(iter->total_buf + offset, iter->data,
-					*(cmd->iter.xfer) - rc);
-		if (*(cmd->firmware_status) || rc) {
-			rc = offset + *(cmd->iter.xfer) - rc;
+					cmd->get_xfer(cmd) - rc);
+		if (cmd->get_firmware_status(cmd) || rc) {
+			rc = offset + cmd->get_xfer(cmd) - rc;
 			break;
 		}
 	}
@@ -2913,7 +3022,7 @@ static int do_cmd(int fd, int ioctl_cmd, struct ndctl_cmd *cmd)
 			bus->id, dimm ? ndctl_dimm_get_handle(dimm) : 0,
 			name, sub_name ? ":" : "", sub_name ? sub_name : "",
 			iter->total_xfer, iter->max_xfer, rc,
-			*(cmd->firmware_status),
+			cmd->get_firmware_status(cmd),
 			rc < 0 ? strerror(errno) : "success");
 
 	return rc;
@@ -2928,6 +3037,11 @@ NDCTL_EXPORT int ndctl_cmd_submit(struct ndctl_cmd *cmd)
 	int ioctl_cmd = to_ioctl_cmd(cmd->type, !!cmd->dimm);
 	struct ndctl_bus *bus = cmd_to_bus(cmd);
 	struct ndctl_ctx *ctx = ndctl_bus_get_ctx(bus);
+
+	if (!cmd->get_firmware_status) {
+		err(ctx, "missing status retrieval\n");
+		return -EINVAL;
+	}
 
 	if (ioctl_cmd == 0) {
 		rc = -EINVAL;
@@ -2997,7 +3111,7 @@ NDCTL_EXPORT int ndctl_cmd_get_status(struct ndctl_cmd *cmd)
 
 NDCTL_EXPORT unsigned int ndctl_cmd_get_firmware_status(struct ndctl_cmd *cmd)
 {
-	return *(cmd->firmware_status);
+	return cmd->get_firmware_status(cmd);
 }
 
 NDCTL_EXPORT const char *ndctl_region_get_devname(struct ndctl_region *region)
@@ -3408,7 +3522,7 @@ static const char *enforce_id_to_name(enum ndctl_namespace_mode mode)
 {
 	static const char *id_to_name[] = {
 		[NDCTL_NS_MODE_MEMORY] = "pfn",
-		[NDCTL_NS_MODE_SAFE] = "btt", /* TODO: convert to btt2 */
+		[NDCTL_NS_MODE_SECTOR] = "btt", /* TODO: convert to btt2 */
 		[NDCTL_NS_MODE_RAW] = "",
 		[NDCTL_NS_MODE_DAX] = "dax",
 		[NDCTL_NS_MODE_UNKNOWN] = "<unknown>",
@@ -3476,6 +3590,12 @@ static void *add_namespace(void *parent, int id, const char *ndns_base)
 		ndns->numa_node = strtol(buf, NULL, 0);
 	else
 		ndns->numa_node = -1;
+
+	sprintf(path, "%s/target_node", ndns_base);
+	if (sysfs_read_attr(ctx, path, buf) == 0)
+		ndns->target_node = strtol(buf, NULL, 0);
+	else
+		ndns->target_node = -1;
 
 	sprintf(path, "%s/holder_class", ndns_base);
 	if (sysfs_read_attr(ctx, path, buf) == 0)
@@ -3731,7 +3851,7 @@ NDCTL_EXPORT enum ndctl_namespace_mode ndctl_namespace_get_mode(
 	if (strcmp("raw", buf) == 0)
 		return NDCTL_NS_MODE_RAW;
 	if (strcmp("safe", buf) == 0)
-		return NDCTL_NS_MODE_SAFE;
+		return NDCTL_NS_MODE_SECTOR;
 	return -ENXIO;
 }
 
@@ -4010,10 +4130,15 @@ NDCTL_EXPORT int ndctl_namespace_enable(struct ndctl_namespace *ndns)
 	const char *devname = ndctl_namespace_get_devname(ndns);
 	struct ndctl_ctx *ctx = ndctl_namespace_get_ctx(ndns);
 	struct ndctl_region *region = ndns->region;
+	unsigned long long size = ndctl_namespace_get_size(ndns);
 	int rc;
 
 	if (ndctl_namespace_is_enabled(ndns))
 		return 0;
+
+	/* Don't try to enable idle namespace (no capacity allocated) */
+	if (size == 0)
+		return -ENXIO;
 
 	rc = ndctl_bind(ctx, ndns->module, devname);
 
@@ -4182,6 +4307,27 @@ NDCTL_EXPORT int ndctl_namespace_is_configured(struct ndctl_namespace *ndns)
 	}
 }
 
+/*
+ * Check if a given 'seed' namespace is ok to configure.
+ * If a size or uuid is present, it is considered not configuration-idle,
+ * except in the case of legacy (ND_DEVICE_NAMESPACE_IO) namespaces. In
+ * that case, the size is never zero, but the namespace can still be
+ * reconfigured.
+ */
+NDCTL_EXPORT int ndctl_namespace_is_configuration_idle(
+		struct ndctl_namespace *ndns)
+{
+	if (ndctl_namespace_is_active(ndns))
+		return 0;
+	if (ndctl_namespace_is_configured(ndns)) {
+		if (ndctl_namespace_get_type(ndns) == ND_DEVICE_NAMESPACE_IO)
+			return 1;
+		return 0;
+	}
+	/* !active and !configured is configuration-idle */
+	return 1;
+}
+
 NDCTL_EXPORT void ndctl_namespace_get_uuid(struct ndctl_namespace *ndns, uuid_t uu)
 {
 	memcpy(uu, ndns->uuid, sizeof(uuid_t));
@@ -4338,6 +4484,24 @@ static int namespace_set_size(struct ndctl_namespace *ndns,
 		return rc;
 
 	ndns->size = size;
+
+	/*
+	 * A size change event invalidates / establishes 'resource', try
+	 * to refresh it.
+	 */
+	if (snprintf(path, len, "%s/resource", ndns->ndns_path) >= len) {
+		err(ctx, "%s: buffer too small!\n",
+				ndctl_namespace_get_devname(ndns));
+		ndns->resource = ULLONG_MAX;
+		return 0;
+	}
+
+	if (sysfs_read_attr(ctx, path, buf) < 0) {
+		ndns->resource = ULLONG_MAX;
+		return 0;
+	}
+
+	ndns->resource = strtoull(buf, NULL, 0);
 	return 0;
 }
 
@@ -4370,6 +4534,11 @@ NDCTL_EXPORT int ndctl_namespace_set_size(struct ndctl_namespace *ndns,
 NDCTL_EXPORT int ndctl_namespace_get_numa_node(struct ndctl_namespace *ndns)
 {
     return ndns->numa_node;
+}
+
+NDCTL_EXPORT int ndctl_namespace_get_target_node(struct ndctl_namespace *ndns)
+{
+	return ndns->target_node;
 }
 
 static int __ndctl_namespace_set_write_cache(struct ndctl_namespace *ndns,

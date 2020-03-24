@@ -32,6 +32,7 @@
 #include "hpe1.h"
 #include "msft.h"
 #include "hyperv.h"
+#include "libndctl-nfit.h"
 
 struct nvdimm_data {
 	struct ndctl_cmd *cmd_read;
@@ -201,6 +202,7 @@ struct badblocks_iter {
  * @bdev: associated block_device of a namespace
  * @size: unsigned
  * @numa_node: numa node attribute
+ * @target_node: target node were this region to be onlined
  *
  * A 'namespace' is the resulting device after region-aliasing and
  * label-parsing is resolved.
@@ -220,7 +222,7 @@ struct ndctl_namespace {
 	char *alt_name;
 	uuid_t uuid;
 	struct ndctl_lbasize lbasize;
-	int numa_node;
+	int numa_node, target_node;
 	struct list_head injected_bb;
 };
 
@@ -232,7 +234,7 @@ struct ndctl_namespace {
  * @type: cmd number
  * @size: total size of the ndctl_cmd allocation
  * @status: negative if failed, 0 if success, > 0 if never submitted
- * @firmware_status: NFIT command output status code
+ * @get_firmware_status: per command firmware status field retrieval
  * @iter: iterator for multi-xfer commands
  * @source: source cmd of an inherited iter.total_buf
  *
@@ -249,11 +251,13 @@ struct ndctl_cmd {
 	int type;
 	int size;
 	int status;
-	u32 *firmware_status;
+	u32 (*get_firmware_status)(struct ndctl_cmd *cmd);
+	u32 (*get_xfer)(struct ndctl_cmd *cmd);
+	u32 (*get_offset)(struct ndctl_cmd *cmd);
+	void (*set_xfer)(struct ndctl_cmd *cmd, u32 xfer);
+	void (*set_offset)(struct ndctl_cmd *cmd, u32 offset);
 	struct ndctl_cmd_iter {
 		u32 init_offset;
-		u32 *offset;
-		u32 *xfer; /* pointer to xfer length in cmd */
 		u8 *data; /* pointer to the data buffer location in cmd */
 		u32 max_xfer;
 		char *total_buf;
@@ -267,6 +271,7 @@ struct ndctl_cmd {
 		struct nd_cmd_ars_status ars_status[0];
 		struct nd_cmd_clear_error clear_err[0];
 		struct nd_cmd_pkg pkg[0];
+		struct nd_cmd_bus cmd_bus[0];
 		struct ndn_pkg_hpe1 hpe1[0];
 		struct ndn_pkg_msft msft[0];
 		struct nd_pkg_hyperv hyperv[0];
@@ -340,12 +345,13 @@ struct ndctl_dimm_ops {
 	struct ndctl_cmd *(*new_ack_shutdown_count)(struct ndctl_dimm *);
 	int (*fw_update_supported)(struct ndctl_dimm *);
 	int (*xlat_firmware_status)(struct ndctl_cmd *);
+	u32 (*get_firmware_status)(struct ndctl_cmd *);
 };
 
-struct ndctl_dimm_ops * const intel_dimm_ops;
-struct ndctl_dimm_ops * const hpe1_dimm_ops;
-struct ndctl_dimm_ops * const msft_dimm_ops;
-struct ndctl_dimm_ops * const hyperv_dimm_ops;
+extern struct ndctl_dimm_ops * const intel_dimm_ops;
+extern struct ndctl_dimm_ops * const hpe1_dimm_ops;
+extern struct ndctl_dimm_ops * const msft_dimm_ops;
+extern struct ndctl_dimm_ops * const hyperv_dimm_ops;
 
 static inline struct ndctl_bus *cmd_to_bus(struct ndctl_cmd *cmd)
 {

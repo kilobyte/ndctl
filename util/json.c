@@ -306,7 +306,7 @@ struct json_object *util_daxctl_dev_to_json(struct daxctl_dev *dev,
 	if (jobj)
 		json_object_object_add(jdev, "mode", jobj);
 
-	if (mem) {
+	if (mem && daxctl_dev_get_resource(dev) != 0) {
 		movable = daxctl_memory_is_movable(mem);
 		if (movable == 1)
 			jobj = json_object_new_boolean(true);
@@ -339,7 +339,8 @@ struct json_object *util_daxctl_devs_to_list(struct daxctl_region *region,
 		if (!util_daxctl_dev_filter(dev, ident))
 			continue;
 
-		if (!(flags & UTIL_JSON_IDLE) && !daxctl_dev_get_size(dev))
+		if (!(flags & (UTIL_JSON_IDLE|UTIL_JSON_CONFIGURED))
+				&& !daxctl_dev_get_size(dev))
 			continue;
 
 		if (!jdevs) {
@@ -912,7 +913,7 @@ struct json_object *util_namespace_to_json(struct ndctl_namespace *ndns,
 	unsigned long align = 0;
 	char buf[40];
 	uuid_t uuid;
-	int numa;
+	int numa, target;
 
 	if (!jndns)
 		return NULL;
@@ -944,7 +945,7 @@ struct json_object *util_namespace_to_json(struct ndctl_namespace *ndns,
 		jobj = json_object_new_string("devdax");
 		loc = ndctl_dax_get_location(dax);
 		break;
-	case NDCTL_NS_MODE_SAFE:
+	case NDCTL_NS_MODE_SECTOR:
 		if (!btt)
 			goto err;
 		jobj = json_object_new_string("sector");
@@ -960,7 +961,7 @@ struct json_object *util_namespace_to_json(struct ndctl_namespace *ndns,
 	if (jobj)
 		json_object_object_add(jndns, "mode", jobj);
 
-	if ((mode != NDCTL_NS_MODE_SAFE) && (mode != NDCTL_NS_MODE_RAW)) {
+	if ((mode != NDCTL_NS_MODE_SECTOR) && (mode != NDCTL_NS_MODE_RAW)) {
 		jobj = json_object_new_string(locations[loc]);
 		if (jobj)
 			json_object_object_add(jndns, "map", jobj);
@@ -1090,6 +1091,13 @@ struct json_object *util_namespace_to_json(struct ndctl_namespace *ndns,
 		jobj = json_object_new_int(numa);
 		if (jobj)
 			json_object_object_add(jndns, "numa_node", jobj);
+	}
+
+	target = ndctl_namespace_get_target_node(ndns);
+	if (target >= 0 && flags & UTIL_JSON_VERBOSE) {
+		jobj = json_object_new_int(target);
+		if (jobj)
+			json_object_object_add(jndns, "target_node", jobj);
 	}
 
 	if (pfn)
