@@ -12,6 +12,7 @@ libndctl.so.6 libndctl6 #MINVER#
  LIBNDCTL_21@LIBNDCTL_21 66
  LIBNDCTL_22@LIBNDCTL_22 67
  LIBNDCTL_23@LIBNDCTL_23 68
+ LIBNDCTL_24@LIBNDCTL_24 69
  LIBNDCTL_3@LIBNDCTL_3 63
  ndctl_bb_get_block@LIBNDCTL_14 63
  ndctl_bb_get_count@LIBNDCTL_14 63
@@ -59,8 +60,10 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_bus_get_scrub_state@LIBNDCTL_15 63
  ndctl_bus_has_error_injection@LIBNDCTL_14 63
  ndctl_bus_has_nfit@LIBNDCTL_3 63
+ ndctl_bus_has_of_node@LIBNDCTL_24 69
  ndctl_bus_is_cmd_supported@LIBNDCTL_3 63
  ndctl_bus_is_nfit_cmd_supported@LIBNDCTL_13 63
+ ndctl_bus_is_papr_scm@LIBNDCTL_24 69
  ndctl_bus_poll_scrub_completion@LIBNDCTL_20 65
  ndctl_bus_start_scrub@LIBNDCTL_15 63
  ndctl_bus_wait_for_scrub_completion@LIBNDCTL_14 63
@@ -382,6 +385,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_region_get_target_node@LIBNDCTL_23 68
  ndctl_region_get_type@LIBNDCTL_3 63
  ndctl_region_get_type_name@LIBNDCTL_3 63
+ ndctl_region_has_numa@LIBNDCTL_24 69
  ndctl_region_is_enabled@LIBNDCTL_3 63
  ndctl_region_set_align@LIBNDCTL_23 68
  ndctl_region_set_ro@LIBNDCTL_3 63
