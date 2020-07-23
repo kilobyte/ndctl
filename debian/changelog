@@ -1,3 +1,10 @@
+ndctl (69-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Update library symbols.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Fri, 24 Jul 2020 00:46:53 +0200
+
 ndctl (68-1) unstable; urgency=medium
 
   * New upstream release.
