@@ -59,6 +59,8 @@ static unsigned long listopts_to_flags(void)
 		flags |= UTIL_JSON_VERBOSE;
 	if (list.capabilities)
 		flags |= UTIL_JSON_CAPABILITIES;
+	if (list.firmware)
+		flags |= UTIL_JSON_FIRMWARE;
 	return flags;
 }
 
@@ -367,14 +369,6 @@ static void filter_dimm(struct ndctl_dimm *dimm, struct util_filter_ctx *ctx)
 		}
 	}
 
-	if (list.firmware) {
-		struct json_object *jfirmware;
-
-		jfirmware = util_dimm_firmware_to_json(dimm, lfa->flags);
-		if (jfirmware)
-			json_object_object_add(jdimm, "firmware", jfirmware);
-	}
-
 	/*
 	 * Without a bus we are collecting dimms anonymously across the
 	 * platform.
@@ -409,11 +403,12 @@ static bool filter_bus(struct ndctl_bus *bus, struct util_filter_ctx *ctx)
 		}
 	}
 
-	lfa->jbus = util_bus_to_json(bus);
+	lfa->jbus = util_bus_to_json(bus, lfa->flags);
 	if (!lfa->jbus) {
 		fail("\n");
 		return false;
 	}
+
 	json_object_array_add(lfa->jbuses, lfa->jbus);
 	return true;
 }

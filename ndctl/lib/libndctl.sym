@@ -437,3 +437,17 @@ LIBNDCTL_24 {
 	ndctl_bus_is_papr_scm;
 	ndctl_region_has_numa;
 } LIBNDCTL_23;
+
+LIBNDCTL_25 {
+	ndctl_dimm_get_fw_activate_state;
+	ndctl_dimm_get_fw_activate_result;
+	ndctl_bus_get_fw_activate_state;
+	ndctl_bus_get_fw_activate_method;
+	ndctl_dimm_fw_activate_disarm;
+	ndctl_dimm_fw_activate_arm;
+	ndctl_bus_set_fw_activate_noidle;
+	ndctl_bus_clear_fw_activate_noidle;
+	ndctl_bus_set_fw_activate_nosuspend;
+	ndctl_bus_clear_fw_activate_nosuspend;
+	ndctl_bus_activate_firmware;
+} LIBNDCTL_24;

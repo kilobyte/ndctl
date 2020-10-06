@@ -18,7 +18,6 @@
 #include <unistd.h>
 #include <limits.h>
 #include <syslog.h>
-#include <util/log.h>
 #include <util/size.h>
 #include <uuid/uuid.h>
 #include <util/json.h>
@@ -32,6 +31,11 @@
 #include <ccan/array_size/array_size.h>
 #include <ndctl/firmware-update.h>
 #include <util/keys.h>
+
+static const char *cmd_name = "dimm";
+static int err_count;
+#define err(fmt, ...) \
+	({ err_count++; error("%s: " fmt, cmd_name, ##__VA_ARGS__); })
 
 struct action_context {
 	struct json_object *jdimms;
@@ -55,10 +59,15 @@ static struct parameters {
 	bool master_pass;
 	bool human;
 	bool force;
+	bool arm;
+	bool arm_set;
+	bool disarm;
+	bool disarm_set;
 	bool index;
 	bool json;
 	bool verbose;
 } param = {
+	.arm = true,
 	.labelversion = "1.1",
 };
 
@@ -456,6 +465,7 @@ static int verify_fw_size(struct update_context *uctx)
 static int submit_get_firmware_info(struct ndctl_dimm *dimm,
 		struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	struct update_context *uctx = &actx->update;
 	struct fw_info *fw = &uctx->dimm_fw;
 	struct ndctl_cmd *cmd;
@@ -473,8 +483,7 @@ static int submit_get_firmware_info(struct ndctl_dimm *dimm,
 	rc = -ENXIO;
 	status = ndctl_cmd_fw_xlat_firmware_status(cmd);
 	if (status != FW_SUCCESS) {
-		fprintf(stderr, "GET FIRMWARE INFO on DIMM %s failed: %#x\n",
-				ndctl_dimm_get_devname(dimm), status);
+		err("%s: failed to retrieve firmware info", devname);
 		goto out;
 	}
 
@@ -508,6 +517,7 @@ out:
 static int submit_start_firmware_upload(struct ndctl_dimm *dimm,
 		struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	struct update_context *uctx = &actx->update;
 	struct fw_info *fw = &uctx->dimm_fw;
 	struct ndctl_cmd *cmd;
@@ -523,21 +533,18 @@ static int submit_start_firmware_upload(struct ndctl_dimm *dimm,
 		return rc;
 
 	status = ndctl_cmd_fw_xlat_firmware_status(cmd);
+	if (status == FW_EBUSY) {
+		err("%s: busy with another firmware update", devname);
+		return -EBUSY;
+	}
 	if (status != FW_SUCCESS) {
-		fprintf(stderr,
-			"START FIRMWARE UPDATE on DIMM %s failed: %#x\n",
-			ndctl_dimm_get_devname(dimm), status);
-		if (status == FW_EBUSY)
-			fprintf(stderr, "Another firmware upload in progress"
-					" or firmware already updated.\n");
+		err("%s: failed to create start context", devname);
 		return -ENXIO;
 	}
 
 	fw->context = ndctl_cmd_fw_start_get_context(cmd);
 	if (fw->context == UINT_MAX) {
-		fprintf(stderr,
-			"Retrieved firmware context invalid on DIMM %s\n",
-			ndctl_dimm_get_devname(dimm));
+		err("%s: failed to retrieve start context", devname);
 		return -ENXIO;
 	}
 
@@ -563,16 +570,16 @@ static int get_fw_data_from_file(FILE *file, void *buf, uint32_t len)
 	return len;
 }
 
-static int send_firmware(struct ndctl_dimm *dimm,
-		struct action_context *actx)
+static int send_firmware(struct ndctl_dimm *dimm, struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	struct update_context *uctx = &actx->update;
 	struct fw_info *fw = &uctx->dimm_fw;
-	struct ndctl_cmd *cmd = NULL;
-	ssize_t read;
-	int rc = -ENXIO;
-	enum ND_FW_STATUS status;
 	uint32_t copied = 0, len, remain;
+	struct ndctl_cmd *cmd = NULL;
+	enum ND_FW_STATUS status;
+	int rc = -ENXIO;
+	ssize_t read;
 	void *buf;
 
 	buf = malloc(fw->update_size);
@@ -592,18 +599,22 @@ static int send_firmware(struct ndctl_dimm *dimm,
 		cmd = ndctl_dimm_cmd_new_fw_send(uctx->start, copied, read,
 				buf);
 		if (!cmd) {
-			rc = -ENXIO;
+			rc = -ENOMEM;
 			goto cleanup;
 		}
 
 		rc = ndctl_cmd_submit(cmd);
-		if (rc < 0)
+		if (rc < 0) {
+			err("%s: failed to issue firmware transmit: %d",
+					devname, rc);
 			goto cleanup;
+		}
 
 		status = ndctl_cmd_fw_xlat_firmware_status(cmd);
 		if (status != FW_SUCCESS) {
-			error("SEND FIRMWARE failed: %#x\n", status);
-			rc = -ENXIO;
+			err("%s: failed to transmit firmware: %d",
+					devname, status);
+			rc = -EIO;
 			goto cleanup;
 		}
 
@@ -623,10 +634,11 @@ cleanup:
 static int submit_finish_firmware(struct ndctl_dimm *dimm,
 		struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	struct update_context *uctx = &actx->update;
-	struct ndctl_cmd *cmd;
-	int rc;
 	enum ND_FW_STATUS status;
+	struct ndctl_cmd *cmd;
+	int rc = -ENXIO;
 
 	cmd = ndctl_dimm_cmd_new_fw_finish(uctx->start);
 	if (!cmd)
@@ -637,12 +649,19 @@ static int submit_finish_firmware(struct ndctl_dimm *dimm,
 		goto out;
 
 	status = ndctl_cmd_fw_xlat_firmware_status(cmd);
-	if (status != FW_SUCCESS) {
-		fprintf(stderr,
-			"FINISH FIRMWARE UPDATE on DIMM %s failed: %#x\n",
-			ndctl_dimm_get_devname(dimm), status);
-		rc = -ENXIO;
-		goto out;
+	switch (status) {
+	case FW_SUCCESS:
+		rc = 0;
+		break;
+	case FW_ERETRY:
+		err("%s: device busy with other operation (ARS?)", devname);
+		break;
+	case FW_EBADFW:
+		err("%s: firmware image rejected", devname);
+		break;
+	default:
+		err("%s: update failed: error code: %d", devname, status);
+		break;
 	}
 
 out:
@@ -680,16 +699,83 @@ out:
 	return rc;
 }
 
+static enum ndctl_fwa_state fw_update_arm(struct ndctl_dimm *dimm)
+{
+	struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
+	const char *devname = ndctl_dimm_get_devname(dimm);
+	enum ndctl_fwa_state state = ndctl_bus_get_fw_activate_state(bus);
+
+	if (state == NDCTL_FWA_INVALID) {
+		if (param.verbose)
+			err("%s: firmware activate capability not found\n",
+					devname);
+		return NDCTL_FWA_INVALID;
+	}
+
+	if (state == NDCTL_FWA_ARM_OVERFLOW && !param.force) {
+		err("%s: overflow detected skip arm\n", devname);
+		return NDCTL_FWA_INVALID;
+	}
+
+	state = ndctl_dimm_fw_activate_arm(dimm);
+	if (state != NDCTL_FWA_ARMED) {
+		err("%s: failed to arm\n", devname);
+		return NDCTL_FWA_INVALID;
+	}
+
+	if (param.force)
+		return state;
+
+	state = ndctl_bus_get_fw_activate_state(bus);
+	if (state == NDCTL_FWA_ARM_OVERFLOW) {
+		err("%s: arm aborted, tripped overflow\n", devname);
+		ndctl_dimm_fw_activate_disarm(dimm);
+		return NDCTL_FWA_INVALID;
+	}
+	return NDCTL_FWA_ARMED;
+}
+
+#define ARM_FAILURE_FATAL (1)
+#define ARM_FAILURE_OK (0)
+
+static int fw_update_toggle_arm(struct ndctl_dimm *dimm,
+		struct json_object *jdimms, bool arm_fatal)
+{
+	enum ndctl_fwa_state state;
+	struct json_object *jobj;
+	unsigned long flags;
+
+	if (param.disarm)
+		state = ndctl_dimm_fw_activate_disarm(dimm);
+	else if (param.arm)
+		state = fw_update_arm(dimm);
+	else
+		state = NDCTL_FWA_INVALID;
+
+	if (state == NDCTL_FWA_INVALID && arm_fatal)
+		return -ENXIO;
+
+	flags = UTIL_JSON_FIRMWARE;
+	if (isatty(1))
+		flags |= UTIL_JSON_HUMAN;
+	jobj = util_dimm_to_json(dimm, flags);
+	if (jobj)
+		json_object_array_add(jdimms, jobj);
+
+	return 0;
+}
+
 static int query_fw_finish_status(struct ndctl_dimm *dimm,
 		struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	struct update_context *uctx = &actx->update;
 	struct fw_info *fw = &uctx->dimm_fw;
-	struct ndctl_cmd *cmd;
-	int rc;
-	enum ND_FW_STATUS status;
 	struct timespec now, before, after;
+	enum ND_FW_STATUS status;
+	struct ndctl_cmd *cmd;
 	uint64_t ver;
+	int rc;
 
 	cmd = ndctl_dimm_cmd_new_fw_finish_query(uctx->start);
 	if (!cmd)
@@ -743,37 +829,31 @@ again:
 	case FW_SUCCESS:
 		ver = ndctl_cmd_fw_fquery_get_fw_rev(cmd);
 		if (ver == 0) {
-			fprintf(stderr, "No firmware updated.\n");
-			rc = -ENXIO;
+			err("%s: new firmware not found after update", devname);
+			rc = -EIO;
 			goto unref;
 		}
 
-		fprintf(stderr, "Image updated successfully to DIMM %s.\n",
-			ndctl_dimm_get_devname(dimm));
-		fprintf(stderr, "Firmware version %#lx.\n", ver);
-		fprintf(stderr, "Cold reboot to activate.\n");
+		/*
+		 * Now try to arm/disarm firmware activation if
+		 * requested.  Failure to toggle the arm state is not
+		 * fatal, the success / failure will be inferred from
+		 * the emitted json state.
+		 */
+		fw_update_toggle_arm(dimm, actx->jdimms, ARM_FAILURE_OK);
 		rc = 0;
 		break;
 	case FW_EBADFW:
-		fprintf(stderr,
-			"Firmware failed to verify by DIMM %s.\n",
-			ndctl_dimm_get_devname(dimm));
-		/* FALLTHROUGH */
-	case FW_EINVAL_CTX:
-	case FW_ESEQUENCE:
-		rc = -ENXIO;
+		err("%s: firmware verification failure", devname);
+		rc = -EINVAL;
 		break;
 	case FW_ENORES:
-		fprintf(stderr,
-			"Firmware update sequence timed out: %s\n",
-			ndctl_dimm_get_devname(dimm));
+		err("%s: timeout awaiting update", devname);
 		rc = -ETIMEDOUT;
 		break;
 	default:
-		fprintf(stderr,
-			"Unknown update status: %#x on DIMM %s\n",
-			status, ndctl_dimm_get_devname(dimm));
-		rc = -EINVAL;
+		err("%s: unhandled error %d", devname, status);
+		rc = -EIO;
 		break;
 	}
 
@@ -785,6 +865,7 @@ unref:
 static int update_firmware(struct ndctl_dimm *dimm,
 		struct action_context *actx)
 {
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	int rc;
 
 	rc = submit_get_firmware_info(dimm, actx);
@@ -795,15 +876,15 @@ static int update_firmware(struct ndctl_dimm *dimm,
 	if (rc < 0)
 		return rc;
 
-	printf("Uploading firmware to DIMM %s.\n",
-			ndctl_dimm_get_devname(dimm));
+	if (param.verbose)
+		fprintf(stderr, "%s: uploading firmware\n", devname);
 
 	rc = send_firmware(dimm, actx);
 	if (rc < 0) {
-		fprintf(stderr, "Firmware send failed. Aborting!\n");
+		err("%s: firmware send failed", devname);
 		rc = submit_abort_firmware(dimm, actx);
 		if (rc < 0)
-			fprintf(stderr, "Aborting update sequence failed.\n");
+			err("%s: abort failed", devname);
 		return rc;
 	}
 
@@ -815,10 +896,10 @@ static int update_firmware(struct ndctl_dimm *dimm,
 
 	rc = submit_finish_firmware(dimm, actx);
 	if (rc < 0) {
-		fprintf(stderr, "Unable to end update sequence.\n");
+		err("%s: failed to finish update sequence", devname);
 		rc = submit_abort_firmware(dimm, actx);
 		if (rc < 0)
-			fprintf(stderr, "Aborting update sequence failed.\n");
+			err("%s: failed to abort update", devname);
 		return rc;
 	}
 
@@ -831,22 +912,32 @@ static int update_firmware(struct ndctl_dimm *dimm,
 
 static int action_update(struct ndctl_dimm *dimm, struct action_context *actx)
 {
+	struct ndctl_bus *bus = ndctl_dimm_get_bus(dimm);
+	const char *devname = ndctl_dimm_get_devname(dimm);
 	int rc;
+
+	if (!param.infile)
+		return fw_update_toggle_arm(dimm, actx->jdimms,
+				ARM_FAILURE_FATAL);
 
 	rc = ndctl_dimm_fw_update_supported(dimm);
 	switch (rc) {
 	case -ENOTTY:
-		error("%s: firmware update not supported by ndctl.",
-			ndctl_dimm_get_devname(dimm));
+		err("%s: firmware update not supported by ndctl.", devname);
 		return rc;
 	case -EOPNOTSUPP:
-		error("%s: firmware update not supported by the kernel",
-			ndctl_dimm_get_devname(dimm));
+		err("%s: firmware update not supported by the kernel", devname);
 		return rc;
 	case -EIO:
-		error("%s: firmware update not supported by either platform firmware or the kernel.",
-			ndctl_dimm_get_devname(dimm));
+		err("%s: firmware update not supported by either platform firmware or the kernel.",
+				devname);
 		return rc;
+	}
+
+	if (ndctl_bus_get_scrub_state(bus) > 0 && !param.force) {
+		err("%s: scrub active, retry after 'ndctl wait-scrub'",
+				devname);
+		return -EBUSY;
 	}
 
 	rc = update_verify_input(actx);
@@ -945,7 +1036,8 @@ static int action_sanitize_dimm(struct ndctl_dimm *dimm,
 	 */
 	if (!param.crypto_erase && !param.overwrite) {
 		param.crypto_erase = true;
-		printf("No santize method passed in, default to crypto-erase\n");
+		if (param.verbose)
+			fprintf(stderr, "No santize method passed in, default to crypto-erase\n");
 	}
 
 	if (param.crypto_erase) {
@@ -982,8 +1074,8 @@ static int action_wait_overwrite(struct ndctl_dimm *dimm,
 	}
 
 	rc = ndctl_dimm_wait_overwrite(dimm);
-	if (rc == 1)
-		printf("%s: overwrite completed.\n",
+	if (rc == 1 && param.verbose)
+		fprintf(stderr, "%s: overwrite completed.\n",
 				ndctl_dimm_get_devname(dimm));
 	return rc;
 }
@@ -1071,7 +1163,12 @@ OPT_STRING('i', "input", &param.infile, "input-file", \
 
 #define UPDATE_OPTIONS() \
 OPT_STRING('f', "firmware", &param.infile, "firmware-file", \
-	"firmware filename for update")
+	"firmware filename for update"), \
+OPT_BOOLEAN('i', "force", &param.force, "ignore ARS / arm status, try to force update"), \
+OPT_BOOLEAN_SET('A', "arm", &param.arm, &param.arm_set, \
+	"arm device for firmware activation (default)"), \
+OPT_BOOLEAN_SET('D', "disarm", &param.disarm, &param.disarm_set, \
+	"disarm device for firmware activation")
 
 #define INIT_OPTIONS() \
 OPT_BOOLEAN('f', "force", &param.force, \
@@ -1187,7 +1284,7 @@ static int dimm_action(int argc, const char **argv, struct ndctl_ctx *ctx,
 		return -EINVAL;
 	}
 
-	json = param.json || param.human;
+	json = param.json || param.human || action == action_update;
 	if (action == action_read && json && (param.len || param.offset)) {
 		fprintf(stderr, "--size and --offset are incompatible with --json\n");
 		usage_with_options(u, options);
@@ -1218,10 +1315,35 @@ static int dimm_action(int argc, const char **argv, struct ndctl_ctx *ctx,
 		}
 	}
 
+	if (param.arm_set && param.disarm_set) {
+		fprintf(stderr, "set either --arm, or --disarm, not both\n");
+		usage_with_options(u, options);
+	}
+
+	if (param.disarm_set && !param.disarm) {
+		fprintf(stderr, "--no-disarm syntax not supported\n");
+		usage_with_options(u, options);
+		return -EINVAL;
+	}
+
 	if (!param.infile) {
+		/*
+		 * Update needs an infile unless we are only being
+		 * called to toggle the arm state. Other actions either
+		 * do no need an input file, or are prepared for stdin.
+		 */
 		if (action == action_update) {
-			usage_with_options(u, options);
-			return -EINVAL;
+			if (!param.arm_set && !param.disarm_set) {
+				fprintf(stderr, "require --arm, or --disarm\n");
+				usage_with_options(u, options);
+				return -EINVAL;
+			}
+
+			if (param.arm_set && !param.arm) {
+				fprintf(stderr, "--no-arm syntax not supported\n");
+				usage_with_options(u, options);
+				return -EINVAL;
+			}
 		}
 		actx.f_in = stdin;
 	} else {
@@ -1293,8 +1415,13 @@ static int dimm_action(int argc, const char **argv, struct ndctl_ctx *ctx,
 			rc = action(single, &actx);
 	}
 
-	if (actx.jdimms)
-		util_display_json_array(actx.f_out, actx.jdimms, 0);
+	if (actx.jdimms && json_object_array_length(actx.jdimms) > 0) {
+		unsigned long flags = 0;
+
+		if (actx.f_out == stdout && isatty(1))
+			flags |= UTIL_JSON_HUMAN;
+		util_display_json_array(actx.f_out, actx.jdimms, flags);
+	}
 
 	if (actx.f_out != stdout)
 		fclose(actx.f_out);
@@ -1384,7 +1511,10 @@ int cmd_enable_dimm(int argc, const char **argv, struct ndctl_ctx *ctx)
 
 int cmd_update_firmware(int argc, const char **argv, struct ndctl_ctx *ctx)
 {
-	int count = dimm_action(argc, argv, ctx, action_update, update_options,
+	int count;
+
+	cmd_name = "update firmware";
+	count = dimm_action(argc, argv, ctx, action_update, update_options,
 			"ndctl update-firmware <nmem0> [<nmem1>..<nmemN>] [<options>]");
 
 	fprintf(stderr, "updated %d nmem%s.\n", count >= 0 ? count : 0,
