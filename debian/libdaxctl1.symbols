@@ -7,9 +7,11 @@ libdaxctl.so.1 libdaxctl1 #MINVER#
  LIBDAXCTL_5@LIBDAXCTL_5 63
  LIBDAXCTL_6@LIBDAXCTL_6 66
  LIBDAXCTL_7@LIBDAXCTL_7 67
+ LIBDAXCTL_8@LIBDAXCTL_8 71
  daxctl_dev_disable@LIBDAXCTL_6 66
  daxctl_dev_enable_devdax@LIBDAXCTL_6 66
  daxctl_dev_enable_ram@LIBDAXCTL_6 66
+ daxctl_dev_get_align@LIBDAXCTL_8 71
  daxctl_dev_get_ctx@LIBDAXCTL_6 66
  daxctl_dev_get_devname@LIBDAXCTL_2 63
  daxctl_dev_get_first@LIBDAXCTL_2 63
@@ -23,8 +25,17 @@ libdaxctl.so.1 libdaxctl1 #MINVER#
  daxctl_dev_get_size@LIBDAXCTL_2 63
  daxctl_dev_get_target_node@LIBDAXCTL_6 66
  daxctl_dev_is_enabled@LIBDAXCTL_6 66
+ daxctl_dev_set_align@LIBDAXCTL_8 71
+ daxctl_dev_set_mapping@LIBDAXCTL_8 71
+ daxctl_dev_set_size@LIBDAXCTL_8 71
  daxctl_get_log_priority@LIBDAXCTL_1 63
  daxctl_get_userdata@LIBDAXCTL_1 63
+ daxctl_mapping_get_end@LIBDAXCTL_8 71
+ daxctl_mapping_get_first@LIBDAXCTL_8 71
+ daxctl_mapping_get_next@LIBDAXCTL_8 71
+ daxctl_mapping_get_offset@LIBDAXCTL_8 71
+ daxctl_mapping_get_size@LIBDAXCTL_8 71
+ daxctl_mapping_get_start@LIBDAXCTL_8 71
  daxctl_memory_get_block_size@LIBDAXCTL_6 66
  daxctl_memory_get_dev@LIBDAXCTL_6 66
  daxctl_memory_get_node_path@LIBDAXCTL_6 66
@@ -37,6 +48,8 @@ libdaxctl.so.1 libdaxctl1 #MINVER#
  daxctl_new@LIBDAXCTL_1 63
  daxctl_new_region@LIBDAXCTL_2 63
  daxctl_ref@LIBDAXCTL_1 63
+ daxctl_region_create_dev@LIBDAXCTL_8 71
+ daxctl_region_destroy_dev@LIBDAXCTL_8 71
  daxctl_region_get_align@LIBDAXCTL_4 63
  daxctl_region_get_available_size@LIBDAXCTL_3 63
  daxctl_region_get_ctx@LIBDAXCTL_2 63
