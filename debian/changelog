@@ -1,3 +1,9 @@
+ndctl (71.1-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Tue, 22 Dec 2020 23:58:17 +0100
+
 ndctl (71-1) unstable; urgency=medium
 
   * New upstream release.
