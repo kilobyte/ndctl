@@ -28,6 +28,8 @@ int daxctl_get_log_priority(struct daxctl_ctx *ctx);
 void daxctl_set_log_priority(struct daxctl_ctx *ctx, int priority);
 void daxctl_set_userdata(struct daxctl_ctx *ctx, void *userdata);
 void *daxctl_get_userdata(struct daxctl_ctx *ctx);
+int daxctl_set_config_path(struct daxctl_ctx *ctx, char *config_path);
+const char *daxctl_get_config_path(struct daxctl_ctx *ctx);
 
 struct daxctl_region;
 struct daxctl_region *daxctl_new_region(struct daxctl_ctx *ctx, int id,
@@ -71,6 +73,8 @@ int daxctl_dev_disable(struct daxctl_dev *dev);
 int daxctl_dev_enable_devdax(struct daxctl_dev *dev);
 int daxctl_dev_enable_ram(struct daxctl_dev *dev);
 int daxctl_dev_get_target_node(struct daxctl_dev *dev);
+int daxctl_dev_will_auto_online_memory(struct daxctl_dev *dev);
+int daxctl_dev_has_online_memory(struct daxctl_dev *dev);
 
 struct daxctl_memory;
 struct daxctl_memory *daxctl_dev_get_memory(struct daxctl_dev *dev);

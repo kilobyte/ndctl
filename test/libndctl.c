@@ -980,12 +980,6 @@ static int check_btt_size(struct ndctl_btt *btt)
 	struct ndctl_ctx *ctx = ndctl_btt_get_ctx(btt);
 	struct ndctl_test *test = ndctl_get_private_data(ctx);
 	struct ndctl_namespace *ndns = ndctl_btt_get_namespace(btt);
-
-	if (!ndns)
-		return -ENXIO;
-
-	ns_size = ndctl_namespace_get_size(ndns);
-	sect_size = ndctl_btt_get_sector_size(btt);
 	unsigned long long expect_table[][2] = {
 		[0] = {
 			[0] = 0x11b5400,
@@ -1000,6 +994,12 @@ static int check_btt_size(struct ndctl_btt *btt)
 			[1] = 0xd51b000,
 		},
 	};
+
+	if (!ndns)
+		return -ENXIO;
+
+	ns_size = ndctl_namespace_get_size(ndns);
+	sect_size = ndctl_btt_get_sector_size(btt);
 
 	if (sect_size >= SZ_4K)
 		sect_select = 1;
@@ -1541,6 +1541,7 @@ static int validate_bdev(const char *devname, struct ndctl_btt *btt,
 		struct ndctl_pfn *pfn, struct ndctl_namespace *ndns,
 		struct namespace *namespace, void *buf)
 {
+	struct ndctl_region *region = ndctl_namespace_get_region(ndns);
 	char bdevpath[50];
 	int fd, rc, ro;
 
@@ -1578,6 +1579,13 @@ static int validate_bdev(const char *devname, struct ndctl_btt *btt,
 	}
 
 	ro = 0;
+	rc = ndctl_region_set_ro(region, ro);
+	if (rc < 0) {
+		fprintf(stderr, "%s: ndctl_region_set_ro failed\n", devname);
+		rc = -errno;
+		goto out;
+	}
+
 	rc = ioctl(fd, BLKROSET, &ro);
 	if (rc < 0) {
 		fprintf(stderr, "%s: BLKROSET failed\n",
@@ -1605,8 +1613,16 @@ static int validate_bdev(const char *devname, struct ndctl_btt *btt,
 		rc = -ENXIO;
 		goto out;
 	}
+
+	rc = ndctl_region_set_ro(region, namespace->ro);
+	if (rc < 0) {
+		fprintf(stderr, "%s: ndctl_region_set_ro reset failed\n", devname);
+		rc = -errno;
+		goto out;
+	}
+
 	rc = 0;
- out:
+out:
 	close(fd);
 	return rc;
 }
@@ -2692,7 +2708,7 @@ int test_libndctl(int loglevel, struct ndctl_test *test, struct ndctl_ctx *ctx)
 	daxctl_set_log_priority(daxctl_ctx, loglevel);
 	ndctl_set_private_data(ctx, test);
 
-	err = nfit_test_init(&kmod_ctx, &mod, ctx, loglevel, test);
+	err = ndctl_test_init(&kmod_ctx, &mod, ctx, loglevel, test);
 	if (err < 0) {
 		ndctl_test_skip(test);
 		fprintf(stderr, "nfit_test unavailable skipping tests\n");

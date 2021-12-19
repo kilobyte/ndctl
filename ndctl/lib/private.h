@@ -129,6 +129,7 @@ struct ndctl_ctx {
 	int regions_init;
 	void *userdata;
 	struct list_head busses;
+	const char *config_path;
 	int busses_init;
 	struct udev *udev;
 	struct udev_queue *udev_queue;
@@ -370,8 +371,6 @@ static inline int check_kmod(struct kmod_ctx *kmod_ctx)
 	return kmod_ctx ? 0 : -ENXIO;
 }
 
-int ndctl_bus_nfit_translate_spa(struct ndctl_bus *bus, unsigned long long addr,
-		unsigned int *handle, unsigned long long *dpa);
 struct ndctl_cmd *ndctl_bus_cmd_new_err_inj(struct ndctl_bus *bus);
 struct ndctl_cmd *ndctl_bus_cmd_new_err_inj_clr(struct ndctl_bus *bus);
 struct ndctl_cmd *ndctl_bus_cmd_new_err_inj_stat(struct ndctl_bus *bus,

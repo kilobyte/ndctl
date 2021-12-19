@@ -37,6 +37,7 @@ struct daxctl_ctx {
 	struct log_ctx ctx;
 	int refcount;
 	void *userdata;
+	const char *config_path;
 	int regions_init;
 	struct list_head regions;
 	struct kmod_ctx *kmod_ctx;
@@ -66,6 +67,22 @@ DAXCTL_EXPORT void daxctl_set_userdata(struct daxctl_ctx *ctx, void *userdata)
 	if (ctx == NULL)
 		return;
 	ctx->userdata = userdata;
+}
+
+DAXCTL_EXPORT int daxctl_set_config_path(struct daxctl_ctx *ctx,
+					 char *config_path)
+{
+	if ((!ctx) || (!config_path))
+		return -EINVAL;
+	ctx->config_path = config_path;
+	return 0;
+}
+
+DAXCTL_EXPORT const char *daxctl_get_config_path(struct daxctl_ctx *ctx)
+{
+	if (ctx == NULL)
+		return NULL;
+	return ctx->config_path;
 }
 
 /**
@@ -99,6 +116,9 @@ DAXCTL_EXPORT int daxctl_new(struct daxctl_ctx **ctx)
 	*ctx = c;
 	list_head_init(&c->regions);
 	c->kmod_ctx = kmod_ctx;
+	rc = daxctl_set_config_path(c, DAXCTL_CONF_DIR);
+	if (rc)
+		dbg(c, "Unable to set config path: %s\n", strerror(-rc));
 
 	return 0;
 out:
@@ -1643,4 +1663,35 @@ DAXCTL_EXPORT int daxctl_memory_is_movable(struct daxctl_memory *mem)
 	if (rc < 0)
 		return rc;
 	return (mem->zone == MEM_ZONE_MOVABLE) ? 1 : 0;
+}
+
+DAXCTL_EXPORT int daxctl_dev_will_auto_online_memory(struct daxctl_dev *dev)
+{
+	const char *auto_path = "/sys/devices/system/memory/auto_online_blocks";
+	const char *devname = daxctl_dev_get_devname(dev);
+	struct daxctl_ctx *ctx = daxctl_dev_get_ctx(dev);
+	char buf[SYSFS_ATTR_SIZE];
+
+	/*
+	 * If we can't read the policy for some reason, don't fail yet. Assume
+	 * the auto-onlining policy is absent, and carry on. If onlining blocks
+	 * does result in the memory being in an inconsistent state, we have a
+	 * check and warning for it after the fact
+	 */
+	if (sysfs_read_attr(ctx, auto_path, buf) != 0)
+		err(ctx, "%s: Unable to determine auto-online policy: %s\n",
+				devname, strerror(errno));
+
+	/* match both "online" and "online_movable" */
+	return !strncmp(buf, "online", 6);
+}
+
+DAXCTL_EXPORT int daxctl_dev_has_online_memory(struct daxctl_dev *dev)
+{
+	struct daxctl_memory *mem = daxctl_dev_get_memory(dev);
+
+	if (mem)
+		return daxctl_memory_is_online(mem);
+	else
+		return 0;
 }

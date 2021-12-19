@@ -11,6 +11,7 @@ AM_CPPFLAGS = \
 	-DNDCTL_MAN_PATH=\""$(mandir)"\" \
 	-I${top_srcdir}/ndctl/lib \
 	-I${top_srcdir}/ndctl \
+	-I${top_srcdir}/cxl \
 	-I${top_srcdir}/ \
 	$(KMOD_CFLAGS) \
 	$(UDEV_CFLAGS) \
@@ -35,10 +36,14 @@ SED_PROCESS = \
 	-e 's,@includedir\@,$(includedir),g' \
 	< $< > $@ || rm $@
 
-LIBNDCTL_CURRENT=25
+LIBNDCTL_CURRENT=26
 LIBNDCTL_REVISION=1
-LIBNDCTL_AGE=19
+LIBNDCTL_AGE=20
 
-LIBDAXCTL_CURRENT=6
+LIBDAXCTL_CURRENT=7
 LIBDAXCTL_REVISION=0
-LIBDAXCTL_AGE=5
+LIBDAXCTL_AGE=6
+
+LIBCXL_CURRENT=1
+LIBCXL_REVISION=0
+LIBCXL_AGE=0

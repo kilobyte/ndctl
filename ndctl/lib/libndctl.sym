@@ -451,3 +451,10 @@ LIBNDCTL_25 {
 	ndctl_bus_clear_fw_activate_nosuspend;
 	ndctl_bus_activate_firmware;
 } LIBNDCTL_24;
+
+LIBNDCTL_26 {
+	ndctl_bus_nfit_translate_spa;
+	ndctl_dimm_sizeof_namespace_index;
+	ndctl_set_config_path;
+	ndctl_get_config_path;
+} LIBNDCTL_25;

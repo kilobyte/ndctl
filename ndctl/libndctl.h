@@ -92,6 +92,8 @@ int ndctl_get_log_priority(struct ndctl_ctx *ctx);
 void ndctl_set_log_priority(struct ndctl_ctx *ctx, int priority);
 void ndctl_set_userdata(struct ndctl_ctx *ctx, void *userdata);
 void *ndctl_get_userdata(struct ndctl_ctx *ctx);
+int ndctl_set_config_path(struct ndctl_ctx *ctx, char *config_path);
+const char *ndctl_get_config_path(struct ndctl_ctx *ctx);
 
 enum ndctl_persistence_domain {
 	PERSISTENCE_NONE = 0,
@@ -152,6 +154,8 @@ int ndctl_bus_clear_fw_activate_noidle(struct ndctl_bus *bus);
 int ndctl_bus_set_fw_activate_nosuspend(struct ndctl_bus *bus);
 int ndctl_bus_clear_fw_activate_nosuspend(struct ndctl_bus *bus);
 int ndctl_bus_activate_firmware(struct ndctl_bus *bus, enum ndctl_fwa_method method);
+int ndctl_bus_nfit_translate_spa(struct ndctl_bus *bus, unsigned long long addr,
+		unsigned int *handle, unsigned long long *dpa);
 
 struct ndctl_dimm;
 struct ndctl_dimm *ndctl_dimm_get_first(struct ndctl_bus *bus);
@@ -335,6 +339,7 @@ int ndctl_dimm_init_labels(struct ndctl_dimm *dimm,
 		enum ndctl_namespace_version v);
 unsigned long ndctl_dimm_get_available_labels(struct ndctl_dimm *dimm);
 unsigned int ndctl_dimm_sizeof_namespace_label(struct ndctl_dimm *dimm);
+unsigned int ndctl_dimm_sizeof_namespace_index(struct ndctl_dimm *dimm);
 unsigned int ndctl_cmd_cfg_size_get_size(struct ndctl_cmd *cfg_size);
 ssize_t ndctl_cmd_cfg_read_get_data(struct ndctl_cmd *cfg_read, void *buf,
 		unsigned int len, unsigned int offset);
