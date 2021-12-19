@@ -2,8 +2,8 @@ Source: ndctl
 Maintainer: Adam Borowski <kilobyte@angband.pl>
 Section: libs
 Priority: optional
-Standards-Version: 4.5.0
-Build-Depends: debhelper-compat (= 12),
+Standards-Version: 4.6.0
+Build-Depends: debhelper-compat (= 13),
                pkg-config,
                libkmod-dev,
                libudev-dev,
