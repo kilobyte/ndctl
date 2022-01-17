@@ -11,7 +11,8 @@ Build-Depends: debhelper-compat (= 13),
                libjson-c-dev,
                bash-completion,
                libkeyutils-dev,
-               asciidoctor
+               asciidoctor,
+               libiniparser-dev,
 Rules-Requires-Root: no
 Homepage: https://github.com/pmem/ndctl
 Vcs-Git: https://github.com/kilobyte/ndctl -b debian
