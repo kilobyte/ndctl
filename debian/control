@@ -92,3 +92,22 @@ Description: Development files for libdaxctl
  Header files and development library for compiling C programs to link
  with the libdaxctl library and manage the device DAX subsystem in the
  Linux kernel.
+
+Package: libcxl1
+Architecture: linux-any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: utility library for managing Compute Express Link devices
+ CXL (Compute Express Link) is a family of PCIe-based protocols that can be
+ used to connect high-speed I/O and memory devices.  This library includes
+ code to enumerate/query/configure such devices.
+
+Package: libcxl-dev
+Section: libdevel
+Architecture: linux-any
+Multi-Arch: same
+Depends: libcxl1 (= ${binary:Version}), ${misc:Depends}
+Description: Development files for libcxl
+ Header files and development library for compiling C programs to link
+ with the libcxl library and manage the Compute Express Link subsystem in
+ the Linux kernel.
