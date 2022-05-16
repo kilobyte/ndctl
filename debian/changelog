@@ -1,3 +1,12 @@
+ndctl (73-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Meson.
+  * Trim unused files from the copyright file.
+  * Add an autopkgtest for library header/runtime placements.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Mon, 16 May 2022 17:33:13 +0200
+
 ndctl (72.1-1) unstable; urgency=medium
 
   * New upstream release.
