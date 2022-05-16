@@ -11,7 +11,6 @@
 #include <util/size.h>
 #include <uuid/uuid.h>
 #include <util/json.h>
-#include <util/filter.h>
 #include <json-c/json.h>
 #include <util/fletcher.h>
 #include <ndctl/libndctl.h>
@@ -20,7 +19,10 @@
 #include <ccan/minmax/minmax.h>
 #include <ccan/array_size/array_size.h>
 #include <ndctl/firmware-update.h>
-#include <util/keys.h>
+
+#include "filter.h"
+#include "json.h"
+#include "keys.h"
 
 static const char *cmd_name = "dimm";
 static int err_count;
@@ -166,7 +168,7 @@ static struct json_object *dump_label_json(struct ndctl_dimm *dimm,
 			break;
 		json_object_object_add(jlabel, "isetcookie", jobj);
 
-		jobj = json_object_new_int64(le64_to_cpu(nslabel.lbasize));
+		jobj = util_json_new_u64(le64_to_cpu(nslabel.lbasize));
 		if (!jobj)
 			break;
 		json_object_object_add(jlabel, "lbasize", jobj);

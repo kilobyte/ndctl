@@ -12,9 +12,10 @@ Requires:	CXL_LNAME%{?_isa} = %{version}-%{release}
 BuildRequires:	autoconf
 %if 0%{?rhel} < 9
 BuildRequires:	asciidoc
-%define asciidoc --disable-asciidoctor
+%define asciidoctor -Dasciidoctor=disabled
 %else
 BuildRequires:	rubygem-asciidoctor
+%define asciidoctor -Dasciidoctor=enabled
 %endif
 BuildRequires:	xmlto
 BuildRequires:	automake
@@ -29,6 +30,7 @@ BuildRequires:	pkgconfig(systemd)
 BuildRequires:	keyutils-libs-devel
 BuildRequires:	systemd-rpm-macros
 BuildRequires:	iniparser-devel
+BuildRequires:	meson
 
 %description
 Utility library for managing the "libnvdimm" subsystem.  The "libnvdimm"
@@ -36,6 +38,9 @@ subsystem defines a kernel device model and control message interface for
 platform NVDIMM resources like those defined by the ACPI 6+ NFIT (NVDIMM
 Firmware Interface Table).
 
+%if 0%{?flatpak}
+%global _udevrulesdir %{_prefix}/lib/udev/rules.d
+%endif
 
 %package -n DNAME
 Summary:	Development files for libndctl
@@ -117,17 +122,14 @@ libcxl is a library for enumerating and communicating with CXL devices.
 %setup -q ndctl-%{version}
 
 %build
-echo %{version} > version
-./autogen.sh
-%configure --disable-static --disable-silent-rules %{?asciidoc}
-make %{?_smp_mflags}
+%meson %{?asciidoctor} -Dversion-tag=%{version}
+%meson_build
 
 %install
-%make_install
-find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
+%meson_install
 
 %check
-make check
+%meson_test
 
 %ldconfig_scriptlets -n LNAME
 
@@ -136,6 +138,31 @@ make check
 %ldconfig_scriptlets -n CXL_LNAME
 
 %define bashcompdir %(pkg-config --variable=completionsdir bash-completion)
+
+%pre
+if [ -f %{_sysconfdir}/ndctl/monitor.conf ] ; then
+  if ! [ -f %{_sysconfdir}/ndctl.conf.d/monitor.conf ] ; then
+    cp -a %{_sysconfdir}/ndctl/monitor.conf /var/run/ndctl-monitor.conf-migration
+  fi
+fi
+
+%post
+if [ -f /var/run/ndctl-monitor.conf-migration ] ; then
+  config_found=false
+  while read line ; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      \#*) continue ;;
+    esac
+    config_found=true
+    break
+  done < /var/run/ndctl-monitor.conf-migration
+  if $config_found ; then
+    echo "[monitor]" > %{_sysconfdir}/ndctl.conf.d/monitor.conf
+    cat /var/run/ndctl-monitor.conf-migration >> %{_sysconfdir}/ndctl.conf.d/monitor.conf
+  fi
+  rm /var/run/ndctl-monitor.conf-migration
+fi
 
 %files
 %defattr(-,root,root)
@@ -207,7 +234,7 @@ make check
 %{_libdir}/libcxl.so
 %{_libdir}/pkgconfig/libcxl.pc
 %{_mandir}/man3/cxl*
-%{_mandir}/man3/libcxl.3.gz
+%{_mandir}/man3/libcxl.3*
 
 
 %changelog

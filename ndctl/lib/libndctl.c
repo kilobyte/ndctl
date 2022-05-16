@@ -20,10 +20,10 @@
 #include <ccan/array_size/array_size.h>
 #include <ccan/build_assert/build_assert.h>
 
-#include <ndctl.h>
 #include <util/util.h>
 #include <util/size.h>
 #include <util/sysfs.h>
+#include <ndctl/ndctl.h>
 #include <ndctl/libndctl.h>
 #include <ndctl/namespace.h>
 #include <daxctl/libdaxctl.h>
@@ -608,6 +608,7 @@ static void free_dimm(struct ndctl_dimm *dimm)
 	free(dimm->unique_id);
 	free(dimm->dimm_buf);
 	free(dimm->dimm_path);
+	free(dimm->bus_prefix);
 	if (dimm->module)
 		kmod_module_unref(dimm->module);
 	if (dimm->health_eventfd > -1)
@@ -1665,19 +1666,34 @@ static enum ndctl_fwa_result fwa_result_to_result(const char *result)
 	return NDCTL_FWA_RESULT_INVALID;
 }
 
-static int ndctl_bind(struct ndctl_ctx *ctx, struct kmod_module *module,
-		const char *devname);
-static int ndctl_unbind(struct ndctl_ctx *ctx, const char *devpath);
-static struct kmod_module *to_module(struct ndctl_ctx *ctx, const char *alias);
+NDCTL_EXPORT void ndctl_dimm_refresh_flags(struct ndctl_dimm *dimm)
+{
+	struct ndctl_ctx *ctx = dimm->bus->ctx;
+	char *path = dimm->dimm_buf;
+	char buf[SYSFS_ATTR_SIZE];
+
+	/* Construct path to dimm flags sysfs file */
+	sprintf(path, "%s/%s/flags", dimm->dimm_path, dimm->bus_prefix);
+
+	if (sysfs_read_attr(ctx, path, buf) < 0)
+		return;
+
+	/* Reset the flags */
+	dimm->flags.flags = 0;
+	if (ndctl_bus_has_nfit(dimm->bus))
+		parse_nfit_mem_flags(dimm, buf);
+	else if (ndctl_bus_is_papr_scm(dimm->bus))
+		parse_papr_flags(dimm, buf);
+}
 
 static int populate_dimm_attributes(struct ndctl_dimm *dimm,
-				    const char *dimm_base,
-				    const char *bus_prefix)
+				    const char *dimm_base)
 {
 	int i, rc = -1;
 	char buf[SYSFS_ATTR_SIZE];
 	struct ndctl_ctx *ctx = dimm->bus->ctx;
 	char *path = calloc(1, strlen(dimm_base) + 100);
+	const char *bus_prefix = dimm->bus_prefix;
 
 	if (!path)
 		return -ENOMEM;
@@ -1761,16 +1777,10 @@ static int populate_dimm_attributes(struct ndctl_dimm *dimm,
 	}
 
 	sprintf(path, "%s/%s/flags", dimm_base, bus_prefix);
-	if (sysfs_read_attr(ctx, path, buf) == 0) {
-		if (ndctl_bus_has_nfit(dimm->bus))
-			parse_nfit_mem_flags(dimm, buf);
-		else if (ndctl_bus_is_papr_scm(dimm->bus)) {
-			dimm->cmd_family = NVDIMM_FAMILY_PAPR;
-			parse_papr_flags(dimm, buf);
-		}
-	}
-
 	dimm->health_eventfd = open(path, O_RDONLY|O_CLOEXEC);
+
+	ndctl_dimm_refresh_flags(dimm);
+
 	rc = 0;
  err_read:
 
@@ -1819,11 +1829,16 @@ static int add_papr_dimm(struct ndctl_dimm *dimm, const char *dimm_base)
 
 		/* Allocate monitor mode fd */
 		dimm->health_eventfd = open(path, O_RDONLY|O_CLOEXEC);
-		rc = 0;
+		/* Get the dirty shutdown counter value */
+		sprintf(path, "%s/papr/dirty_shutdown", dimm_base);
+		if (sysfs_read_attr(ctx, path, buf) == 0)
+			dimm->dirty_shutdown = strtoll(buf, NULL, 0);
 
+		rc = 0;
 	} else if (strcmp(buf, "nvdimm_test") == 0) {
+		dimm->cmd_family = NVDIMM_FAMILY_PAPR;
 		/* probe via common populate_dimm_attributes() */
-		rc = populate_dimm_attributes(dimm, dimm_base, "papr");
+		rc = populate_dimm_attributes(dimm, dimm_base);
 	}
 out:
 	free(path);
@@ -1878,7 +1893,7 @@ static void *add_dimm(void *parent, int id, const char *dimm_base)
 	sprintf(path, "%s/modalias", dimm_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
 		goto err_read;
-	dimm->module = to_module(ctx, buf);
+	dimm->module = util_modalias_to_module(ctx, buf);
 
 	dimm->handle = -1;
 	dimm->phys_id = -1;
@@ -1920,9 +1935,20 @@ static void *add_dimm(void *parent, int id, const char *dimm_base)
 	dimm->formats = formats;
 	/* Check if the given dimm supports nfit */
 	if (ndctl_bus_has_nfit(bus)) {
-		rc = populate_dimm_attributes(dimm, dimm_base, "nfit");
+		dimm->bus_prefix = strdup("nfit");
+		if (!dimm->bus_prefix) {
+			rc = -ENOMEM;
+			goto out;
+		}
+		rc =  populate_dimm_attributes(dimm, dimm_base);
+
 	} else if (ndctl_bus_has_of_node(bus)) {
-		rc = add_papr_dimm(dimm, dimm_base);
+		dimm->bus_prefix = strdup("papr");
+		if (!dimm->bus_prefix) {
+			rc = -ENOMEM;
+			goto out;
+		}
+		rc =  add_papr_dimm(dimm, dimm_base);
 	}
 
 	if (rc == -ENODEV) {
@@ -2306,7 +2332,7 @@ NDCTL_EXPORT int ndctl_dimm_disable(struct ndctl_dimm *dimm)
 	if (!ndctl_dimm_is_enabled(dimm))
 		return 0;
 
-	ndctl_unbind(ctx, dimm->dimm_path);
+	util_unbind(dimm->dimm_path, ctx);
 
 	if (ndctl_dimm_is_enabled(dimm)) {
 		err(ctx, "%s: failed to disable\n", devname);
@@ -2325,7 +2351,7 @@ NDCTL_EXPORT int ndctl_dimm_enable(struct ndctl_dimm *dimm)
 	if (ndctl_dimm_is_enabled(dimm))
 		return 0;
 
-	ndctl_bind(ctx, dimm->module, devname);
+	util_bind(devname, dimm->module, "nd", ctx);
 
 	if (!ndctl_dimm_is_enabled(dimm)) {
 		err(ctx, "%s: failed to enable\n", devname);
@@ -2597,7 +2623,7 @@ static void *add_region(void *parent, int id, const char *region_base)
 	sprintf(path, "%s/modalias", region_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
 		goto err_read;
-	region->module = to_module(ctx, buf);
+	region->module = util_modalias_to_module(ctx, buf);
 
 	sprintf(path, "%s/numa_node", region_base);
 	if ((rc = sysfs_read_attr(ctx, path, buf)) == 0)
@@ -3574,7 +3600,7 @@ NDCTL_EXPORT int ndctl_region_enable(struct ndctl_region *region)
 	if (ndctl_region_is_enabled(region))
 		return 0;
 
-	ndctl_bind(ctx, region->module, devname);
+	util_bind(devname, region->module, "nd", ctx);
 
 	if (!ndctl_region_is_enabled(region)) {
 		err(ctx, "%s: failed to enable\n", devname);
@@ -3611,7 +3637,7 @@ static int ndctl_region_disable(struct ndctl_region *region, int cleanup)
 	if (!ndctl_region_is_enabled(region))
 		return 0;
 
-	ndctl_unbind(ctx, region->region_path);
+	util_unbind(region->region_path, ctx);
 
 	if (ndctl_region_is_enabled(region)) {
 		err(ctx, "%s: failed to disable\n", devname);
@@ -3885,28 +3911,6 @@ NDCTL_EXPORT struct ndctl_ctx *ndctl_mapping_get_ctx(
 	return ndctl_mapping_get_bus(mapping)->ctx;
 }
 
-static struct kmod_module *to_module(struct ndctl_ctx *ctx, const char *alias)
-{
-	struct kmod_list *list = NULL;
-	struct kmod_module *mod;
-	int rc;
-
-	if (!ctx->kmod_ctx)
-		return NULL;
-
-	rc = kmod_module_new_from_lookup(ctx->kmod_ctx, alias, &list);
-	if (rc < 0 || !list) {
-		dbg(ctx, "failed to find module for alias: %s %d list: %s\n",
-				alias, rc, list ? "populated" : "empty");
-		return NULL;
-	}
-	mod = kmod_module_get_module(list);
-	dbg(ctx, "alias: %s module: %s\n", alias, kmod_module_get_name(mod));
-	kmod_module_unref_list(list);
-
-	return mod;
-}
-
 static char *get_block_device(struct ndctl_ctx *ctx, const char *block_path)
 {
 	char *bdev_name = NULL;
@@ -4069,7 +4073,7 @@ static void *add_namespace(void *parent, int id, const char *ndns_base)
 	sprintf(path, "%s/modalias", ndns_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
 		goto err_read;
-	ndns->module = to_module(ctx, buf);
+	ndns->module = util_modalias_to_module(ctx, buf);
 
 	ndctl_namespace_foreach(region, ndns_dup)
 		if (ndns_dup->id == ndns->id) {
@@ -4396,81 +4400,6 @@ NDCTL_EXPORT struct badblock *ndctl_namespace_get_first_badblock(
 	return badblocks_iter_first(&ndns->bb_iter, ctx, path);
 }
 
-static int ndctl_bind(struct ndctl_ctx *ctx, struct kmod_module *module,
-		const char *devname)
-{
-	DIR *dir;
-	int rc = 0;
-	char path[200];
-	struct dirent *de;
-	const int len = sizeof(path);
-
-	if (!devname) {
-		err(ctx, "missing devname\n");
-		return -EINVAL;
-	}
-
-	if (module) {
-		rc = kmod_module_probe_insert_module(module,
-				KMOD_PROBE_APPLY_BLACKLIST, NULL, NULL, NULL,
-				NULL);
-		if (rc < 0) {
-			err(ctx, "%s: insert failure: %d\n", __func__, rc);
-			return rc;
-		}
-	}
-
-	if (snprintf(path, len, "/sys/bus/nd/drivers") >= len) {
-		err(ctx, "%s: buffer too small!\n", devname);
-		return -ENXIO;
-	}
-
-	dir = opendir(path);
-	if (!dir) {
-		err(ctx, "%s: opendir(\"%s\") failed\n", devname, path);
-		return -ENXIO;
-	}
-
-	while ((de = readdir(dir)) != NULL) {
-		char *drv_path;
-
-		if (de->d_ino == 0)
-			continue;
-		if (de->d_name[0] == '.')
-			continue;
-		if (asprintf(&drv_path, "%s/%s/bind", path, de->d_name) < 0) {
-			err(ctx, "%s: path allocation failure\n", devname);
-			continue;
-		}
-
-		rc = sysfs_write_attr_quiet(ctx, drv_path, devname);
-		free(drv_path);
-		if (rc == 0)
-			break;
-	}
-	closedir(dir);
-
-	if (rc) {
-		dbg(ctx, "%s: bind failed\n", devname);
-		return -ENXIO;
-	}
-	return 0;
-}
-
-static int ndctl_unbind(struct ndctl_ctx *ctx, const char *devpath)
-{
-	const char *devname = devpath_to_devname(devpath);
-	char path[200];
-	const int len = sizeof(path);
-
-	if (snprintf(path, len, "%s/driver/unbind", devpath) >= len) {
-		err(ctx, "%s: buffer too small!\n", devname);
-		return -ENXIO;
-	}
-
-	return sysfs_write_attr(ctx, path, devname);
-}
-
 static void *add_btt(void *parent, int id, const char *btt_base);
 static void *add_pfn(void *parent, int id, const char *pfn_base);
 static void *add_dax(void *parent, int id, const char *dax_base);
@@ -4556,7 +4485,7 @@ NDCTL_EXPORT int ndctl_namespace_enable(struct ndctl_namespace *ndns)
 	if (ndctl_namespace_is_enabled(ndns))
 		return 0;
 
-	rc = ndctl_bind(ctx, ndns->module, devname);
+	rc = util_bind(devname, ndns->module, "nd", ctx);
 
 	/*
 	 * Rescan now as successfully enabling a namespace device leads
@@ -4604,7 +4533,7 @@ NDCTL_EXPORT int ndctl_namespace_disable(struct ndctl_namespace *ndns)
 	if (!ndctl_namespace_is_enabled(ndns))
 		return 0;
 
-	ndctl_unbind(ctx, ndns->ndns_path);
+	util_unbind(ndns->ndns_path, ctx);
 
 	if (ndctl_namespace_is_enabled(ndns)) {
 		err(ctx, "%s: failed to disable\n", devname);
@@ -5182,7 +5111,7 @@ static void *add_btt(void *parent, int id, const char *btt_base)
 	sprintf(path, "%s/modalias", btt_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
 		goto err_read;
-	btt->module = to_module(ctx, buf);
+	btt->module = util_modalias_to_module(ctx, buf);
 
 	sprintf(path, "%s/uuid", btt_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
@@ -5443,7 +5372,7 @@ NDCTL_EXPORT int ndctl_btt_enable(struct ndctl_btt *btt)
 	if (ndctl_btt_is_enabled(btt))
 		return 0;
 
-	ndctl_bind(ctx, btt->module, devname);
+	util_bind(devname, btt->module, "nd", ctx);
 
 	if (!ndctl_btt_is_enabled(btt)) {
 		err(ctx, "%s: failed to enable\n", devname);
@@ -5480,7 +5409,7 @@ NDCTL_EXPORT int ndctl_btt_delete(struct ndctl_btt *btt)
 		return 0;
 	}
 
-	ndctl_unbind(ctx, btt->btt_path);
+	util_unbind(btt->btt_path, ctx);
 
 	rc = ndctl_btt_set_namespace(btt, NULL);
 	if (rc) {
@@ -5533,7 +5462,7 @@ static void *__add_pfn(struct ndctl_pfn *pfn, const char *pfn_base)
 	sprintf(path, "%s/modalias", pfn_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
 		goto err_read;
-	pfn->module = to_module(ctx, buf);
+	pfn->module = util_modalias_to_module(ctx, buf);
 
 	sprintf(path, "%s/uuid", pfn_base);
 	if (sysfs_read_attr(ctx, path, buf) < 0)
@@ -5931,7 +5860,7 @@ NDCTL_EXPORT int ndctl_pfn_enable(struct ndctl_pfn *pfn)
 	if (ndctl_pfn_is_enabled(pfn))
 		return 0;
 
-	ndctl_bind(ctx, pfn->module, devname);
+	util_bind(devname, pfn->module, "nd", ctx);
 
 	if (!ndctl_pfn_is_enabled(pfn)) {
 		err(ctx, "%s: failed to enable\n", devname);
@@ -5968,7 +5897,7 @@ NDCTL_EXPORT int ndctl_pfn_delete(struct ndctl_pfn *pfn)
 		return 0;
 	}
 
-	ndctl_unbind(ctx, pfn->pfn_path);
+	util_unbind(pfn->pfn_path, ctx);
 
 	rc = ndctl_pfn_set_namespace(pfn, NULL);
 	if (rc) {
@@ -6124,7 +6053,7 @@ NDCTL_EXPORT int ndctl_dax_enable(struct ndctl_dax *dax)
 	if (ndctl_dax_is_enabled(dax))
 		return 0;
 
-	ndctl_bind(ctx, pfn->module, devname);
+	util_bind(devname, pfn->module, "nd", ctx);
 
 	if (!ndctl_dax_is_enabled(dax)) {
 		err(ctx, "%s: failed to enable\n", devname);
@@ -6155,7 +6084,7 @@ NDCTL_EXPORT int ndctl_dax_delete(struct ndctl_dax *dax)
 		return 0;
 	}
 
-	ndctl_unbind(ctx, pfn->pfn_path);
+	util_unbind(pfn->pfn_path, ctx);
 
 	rc = ndctl_dax_set_namespace(dax, NULL);
 	if (rc) {
