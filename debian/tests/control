@@ -3,3 +3,9 @@ Depends: ndctl
 
 Tests: daxctl-commands
 Depends: daxctl
+
+# Installed headers have been moved in the past, and the build system places
+# binary libs in a weird place.
+Test-Command: cc -o $AUTOPKGTEST_TMP/linkia debian/tests/linkia.c -lcxl -lndctl -ldaxctl
+Depends: gcc, libc-dev, libcxl-dev, libndctl-dev, libdaxctl-dev
+Features: test-name=link-libraries
