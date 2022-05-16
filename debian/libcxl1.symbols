@@ -1,6 +1,14 @@
 libcxl.so.1 libcxl1 #MINVER#
 * Build-Depends-Package: libcxl-dev
  LIBCXL_1@LIBCXL_1 72
+ LIBCXL_2@LIBCXL_2 73
+ cxl_bus_get_ctx@LIBCXL_2 73
+ cxl_bus_get_devname@LIBCXL_2 73
+ cxl_bus_get_first@LIBCXL_2 73
+ cxl_bus_get_id@LIBCXL_2 73
+ cxl_bus_get_next@LIBCXL_2 73
+ cxl_bus_get_port@LIBCXL_2 73
+ cxl_bus_get_provider@LIBCXL_2 73
  cxl_cmd_get_devname@LIBCXL_1 72
  cxl_cmd_get_mbox_status@LIBCXL_1 72
  cxl_cmd_get_out_size@LIBCXL_1 72
@@ -35,39 +43,120 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_identify_get_fw_rev@LIBCXL_1 72
  cxl_cmd_identify_get_label_size@LIBCXL_1 72
  cxl_cmd_identify_get_partition_align@LIBCXL_1 72
+ cxl_cmd_identify_get_persistent_only_size@LIBCXL_2 73
+ cxl_cmd_identify_get_total_size@LIBCXL_2 73
+ cxl_cmd_identify_get_volatile_only_size@LIBCXL_2 73
  cxl_cmd_new_get_health_info@LIBCXL_1 72
+ cxl_cmd_new_get_partition@LIBCXL_2 73
  cxl_cmd_new_identify@LIBCXL_1 72
  cxl_cmd_new_raw@LIBCXL_1 72
  cxl_cmd_new_read_label@LIBCXL_1 72
+ cxl_cmd_new_set_partition@LIBCXL_2 73
  cxl_cmd_new_write_label@LIBCXL_1 72
+ cxl_cmd_partition_get_active_persistent_size@LIBCXL_2 73
+ cxl_cmd_partition_get_active_volatile_size@LIBCXL_2 73
+ cxl_cmd_partition_get_next_persistent_size@LIBCXL_2 73
+ cxl_cmd_partition_get_next_volatile_size@LIBCXL_2 73
+ cxl_cmd_partition_set_mode@LIBCXL_2 73
  cxl_cmd_read_label_get_payload@LIBCXL_1 72
  cxl_cmd_ref@LIBCXL_1 72
  cxl_cmd_set_input_payload@LIBCXL_1 72
  cxl_cmd_set_output_payload@LIBCXL_1 72
  cxl_cmd_submit@LIBCXL_1 72
  cxl_cmd_unref@LIBCXL_1 72
+ cxl_decoder_get_ctx@LIBCXL_2 73
+ cxl_decoder_get_devname@LIBCXL_2 73
+ cxl_decoder_get_first@LIBCXL_2 73
+ cxl_decoder_get_id@LIBCXL_2 73
+ cxl_decoder_get_next@LIBCXL_2 73
+ cxl_decoder_get_nr_targets@LIBCXL_2 73
+ cxl_decoder_get_port@LIBCXL_2 73
+ cxl_decoder_get_resource@LIBCXL_2 73
+ cxl_decoder_get_size@LIBCXL_2 73
+ cxl_decoder_get_target_by_memdev@LIBCXL_2 73
+ cxl_decoder_get_target_by_position@LIBCXL_2 73
+ cxl_decoder_get_target_type@LIBCXL_2 73
+ cxl_decoder_is_accelmem_capable@LIBCXL_2 73
+ cxl_decoder_is_locked@LIBCXL_2 73
+ cxl_decoder_is_mem_capable@LIBCXL_2 73
+ cxl_decoder_is_pmem_capable@LIBCXL_2 73
+ cxl_decoder_is_volatile_capable@LIBCXL_2 73
+ cxl_dport_get_devname@LIBCXL_2 73
+ cxl_dport_get_first@LIBCXL_2 73
+ cxl_dport_get_id@LIBCXL_2 73
+ cxl_dport_get_next@LIBCXL_2 73
+ cxl_dport_get_physical_node@LIBCXL_2 73
+ cxl_dport_get_port@LIBCXL_2 73
+ cxl_dport_maps_memdev@LIBCXL_2 73
+ cxl_endpoint_get_bus@LIBCXL_2 73
+ cxl_endpoint_get_ctx@LIBCXL_2 73
+ cxl_endpoint_get_devname@LIBCXL_2 73
+ cxl_endpoint_get_first@LIBCXL_2 73
+ cxl_endpoint_get_host@LIBCXL_2 73
+ cxl_endpoint_get_id@LIBCXL_2 73
+ cxl_endpoint_get_memdev@LIBCXL_2 73
+ cxl_endpoint_get_next@LIBCXL_2 73
+ cxl_endpoint_get_parent@LIBCXL_2 73
+ cxl_endpoint_get_port@LIBCXL_2 73
+ cxl_endpoint_is_enabled@LIBCXL_2 73
  cxl_get_log_priority@LIBCXL_1 72
  cxl_get_private_data@LIBCXL_1 72
  cxl_get_userdata@LIBCXL_1 72
+ cxl_memdev_disable_invalidate@LIBCXL_2 73
+ cxl_memdev_enable@LIBCXL_2 73
+ cxl_memdev_get_bus@LIBCXL_2 73
  cxl_memdev_get_ctx@LIBCXL_1 72
  cxl_memdev_get_devname@LIBCXL_1 72
+ cxl_memdev_get_endpoint@LIBCXL_2 73
  cxl_memdev_get_firmware_verison@LIBCXL_1 72
  cxl_memdev_get_first@LIBCXL_1 72
+ cxl_memdev_get_host@LIBCXL_2 73
  cxl_memdev_get_id@LIBCXL_1 72
  cxl_memdev_get_label_size@LIBCXL_1 72
  cxl_memdev_get_major@LIBCXL_1 72
  cxl_memdev_get_minor@LIBCXL_1 72
  cxl_memdev_get_next@LIBCXL_1 72
+ cxl_memdev_get_numa_node@LIBCXL_2 73
  cxl_memdev_get_pmem_size@LIBCXL_1 72
  cxl_memdev_get_ram_size@LIBCXL_1 72
+ cxl_memdev_get_serial@LIBCXL_2 73
+ cxl_memdev_is_enabled@LIBCXL_2 73
  cxl_memdev_nvdimm_bridge_active@LIBCXL_1 72
  cxl_memdev_read_label@LIBCXL_1 72
  cxl_memdev_write_label@LIBCXL_1 72
  cxl_memdev_zero_label@LIBCXL_1 72
  cxl_new@LIBCXL_1 72
+ cxl_port_disable_invalidate@LIBCXL_2 73
+ cxl_port_enable@LIBCXL_2 73
+ cxl_port_get_bus@LIBCXL_2 73
+ cxl_port_get_ctx@LIBCXL_2 73
+ cxl_port_get_devname@LIBCXL_2 73
+ cxl_port_get_dport_by_memdev@LIBCXL_2 73
+ cxl_port_get_first@LIBCXL_2 73
+ cxl_port_get_host@LIBCXL_2 73
+ cxl_port_get_id@LIBCXL_2 73
+ cxl_port_get_next@LIBCXL_2 73
+ cxl_port_get_next_all@LIBCXL_2 73
+ cxl_port_get_nr_dports@LIBCXL_2 73
+ cxl_port_get_parent@LIBCXL_2 73
+ cxl_port_hosts_memdev@LIBCXL_2 73
+ cxl_port_is_enabled@LIBCXL_2 73
+ cxl_port_is_endpoint@LIBCXL_2 73
+ cxl_port_is_root@LIBCXL_2 73
+ cxl_port_is_switch@LIBCXL_2 73
+ cxl_port_to_bus@LIBCXL_2 73
+ cxl_port_to_endpoint@LIBCXL_2 73
  cxl_ref@LIBCXL_1 72
  cxl_set_log_fn@LIBCXL_1 72
  cxl_set_log_priority@LIBCXL_1 72
  cxl_set_private_data@LIBCXL_1 72
  cxl_set_userdata@LIBCXL_1 72
+ cxl_target_get_decoder@LIBCXL_2 73
+ cxl_target_get_devname@LIBCXL_2 73
+ cxl_target_get_first@LIBCXL_2 73
+ cxl_target_get_id@LIBCXL_2 73
+ cxl_target_get_next@LIBCXL_2 73
+ cxl_target_get_physical_node@LIBCXL_2 73
+ cxl_target_get_position@LIBCXL_2 73
+ cxl_target_maps_memdev@LIBCXL_2 73
  cxl_unref@LIBCXL_1 72

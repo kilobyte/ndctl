@@ -15,6 +15,7 @@ libndctl.so.6 libndctl6 #MINVER#
  LIBNDCTL_24@LIBNDCTL_24 69
  LIBNDCTL_25@LIBNDCTL_25 70
  LIBNDCTL_26@LIBNDCTL_26 72
+ LIBNDCTL_27@LIBNDCTL_27 73
  LIBNDCTL_3@LIBNDCTL_3 63
  ndctl_bb_get_block@LIBNDCTL_14 63
  ndctl_bb_get_count@LIBNDCTL_14 63
@@ -249,6 +250,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dimm_read_label_extent@LIBNDCTL_21 66
  ndctl_dimm_read_label_index@LIBNDCTL_21 66
  ndctl_dimm_read_labels@LIBNDCTL_13 63
+ ndctl_dimm_refresh_flags@LIBNDCTL_27 73
  ndctl_dimm_secure_erase@LIBNDCTL_19 65
  ndctl_dimm_security_is_frozen@LIBNDCTL_22 67
  ndctl_dimm_sizeof_namespace_index@LIBNDCTL_26 72
