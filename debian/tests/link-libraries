@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -ex
+
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"' 0 INT QUIT ABRT PIPE TERM
+
+if [ -n "${DEB_HOST_GNU_TYPE:-}" ]; then
+    CROSS_COMPILE="$DEB_HOST_GNU_TYPE-"
+else
+    CROSS_COMPILE=
+fi
+
+cd "$WORKDIR"
+
+cat << EOF > linkia.c
+#include <daxctl/libdaxctl.h>
+#include <ndctl/libndctl.h>
+#include <cxl/libcxl.h>
+
+int main()
+{
+    return daxctl_dev_get_id(0)
+         + ndctl_dax_get_id(0)
+         + cxl_memdev_get_pmem_size(0);
+}
+EOF
+
+# Installed headers have been moved in the past, and the build system places
+# binary libs in a weird place.
+"${CROSS_COMPILE}gcc" -o linkia linkia.c \
+	$("${CROSS_COMPILE}pkg-config" libcxl --cflags --libs) \
+	$("${CROSS_COMPILE}pkg-config" libndctl --cflags --libs) \
+	$("${CROSS_COMPILE}pkg-config" libdaxctl --cflags --libs)
+
+# we can't run because dereferencing 0 will make the program segfault with a null pointer exception.
+#./linkia
+#echo "run: OK"
+
+exit 0

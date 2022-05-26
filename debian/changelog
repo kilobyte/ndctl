@@ -1,3 +1,10 @@
+ndctl (73-2) UNRELEASED; urgency=medium
+
+  * Convert the new test link to a multi-arch working example
+    (taken from libsdl2 tests)
+
+ -- Gianfranco Costamagna <locutusofborg@debian.org>  Mon, 23 May 2022 19:37:36 +0200
+
 ndctl (73-1) unstable; urgency=medium
 
   * New upstream release.
