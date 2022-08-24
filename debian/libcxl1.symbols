@@ -2,6 +2,8 @@ libcxl.so.1 libcxl1 #MINVER#
 * Build-Depends-Package: libcxl-dev
  LIBCXL_1@LIBCXL_1 72
  LIBCXL_2@LIBCXL_2 73
+ LIBCXL_3@LIBCXL_3 74
+ cxl_bus_disable_invalidate@LIBCXL_2 74
  cxl_bus_get_ctx@LIBCXL_2 73
  cxl_bus_get_devname@LIBCXL_2 73
  cxl_bus_get_first@LIBCXL_2 73
@@ -64,13 +66,25 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_set_output_payload@LIBCXL_1 72
  cxl_cmd_submit@LIBCXL_1 72
  cxl_cmd_unref@LIBCXL_1 72
+ cxl_decoder_create_pmem_region@LIBCXL_2 74
+ cxl_decoder_get_by_name@LIBCXL_3 74
  cxl_decoder_get_ctx@LIBCXL_2 73
  cxl_decoder_get_devname@LIBCXL_2 73
+ cxl_decoder_get_dpa_resource@LIBCXL_3 74
+ cxl_decoder_get_dpa_size@LIBCXL_3 74
  cxl_decoder_get_first@LIBCXL_2 73
  cxl_decoder_get_id@LIBCXL_2 73
+ cxl_decoder_get_interleave_granularity@LIBCXL_3 74
+ cxl_decoder_get_interleave_ways@LIBCXL_3 74
+ cxl_decoder_get_last@LIBCXL_3 74
+ cxl_decoder_get_max_available_extent@LIBCXL_3 74
+ cxl_decoder_get_memdev@LIBCXL_3 74
+ cxl_decoder_get_mode@LIBCXL_3 74
  cxl_decoder_get_next@LIBCXL_2 73
  cxl_decoder_get_nr_targets@LIBCXL_2 73
  cxl_decoder_get_port@LIBCXL_2 73
+ cxl_decoder_get_prev@LIBCXL_3 74
+ cxl_decoder_get_region@LIBCXL_3 74
  cxl_decoder_get_resource@LIBCXL_2 73
  cxl_decoder_get_size@LIBCXL_2 73
  cxl_decoder_get_target_by_memdev@LIBCXL_2 73
@@ -81,6 +95,8 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_decoder_is_mem_capable@LIBCXL_2 73
  cxl_decoder_is_pmem_capable@LIBCXL_2 73
  cxl_decoder_is_volatile_capable@LIBCXL_2 73
+ cxl_decoder_set_dpa_size@LIBCXL_3 74
+ cxl_decoder_set_mode@LIBCXL_3 74
  cxl_dport_get_devname@LIBCXL_2 73
  cxl_dport_get_first@LIBCXL_2 73
  cxl_dport_get_id@LIBCXL_2 73
@@ -102,10 +118,15 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_get_log_priority@LIBCXL_1 72
  cxl_get_private_data@LIBCXL_1 72
  cxl_get_userdata@LIBCXL_1 72
+ cxl_mapping_get_decoder@LIBCXL_3 74
+ cxl_mapping_get_first@LIBCXL_3 74
+ cxl_mapping_get_next@LIBCXL_3 74
+ cxl_mapping_get_position@LIBCXL_3 74
  cxl_memdev_disable_invalidate@LIBCXL_2 73
  cxl_memdev_enable@LIBCXL_2 73
  cxl_memdev_get_bus@LIBCXL_2 73
  cxl_memdev_get_ctx@LIBCXL_1 72
+ cxl_port_get_depth@LIBCXL_2 74
  cxl_memdev_get_devname@LIBCXL_1 72
  cxl_memdev_get_endpoint@LIBCXL_2 73
  cxl_memdev_get_firmware_verison@LIBCXL_1 72
@@ -147,6 +168,32 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_port_to_bus@LIBCXL_2 73
  cxl_port_to_endpoint@LIBCXL_2 73
  cxl_ref@LIBCXL_1 72
+ cxl_region_clear_all_targets@LIBCXL_3 74
+ cxl_region_clear_target@LIBCXL_3 74
+ cxl_region_decode_commit@LIBCXL_3 74
+ cxl_region_decode_is_committed@LIBCXL_3 74
+ cxl_region_decode_reset@LIBCXL_3 74
+ cxl_region_delete@LIBCXL_3 74
+ cxl_region_disable@LIBCXL_3 74
+ cxl_region_enable@LIBCXL_3 74
+ cxl_region_get_ctx@LIBCXL_3 74
+ cxl_region_get_decoder@LIBCXL_3 74
+ cxl_region_get_devname@LIBCXL_3 74
+ cxl_region_get_first@LIBCXL_3 74
+ cxl_region_get_id@LIBCXL_3 74
+ cxl_region_get_interleave_granularity@LIBCXL_3 74
+ cxl_region_get_interleave_ways@LIBCXL_3 74
+ cxl_region_get_next@LIBCXL_3 74
+ cxl_region_get_resource@LIBCXL_3 74
+ cxl_region_get_size@LIBCXL_3 74
+ cxl_region_get_target_decoder@LIBCXL_3 74
+ cxl_region_get_uuid@LIBCXL_3 74
+ cxl_region_is_enabled@LIBCXL_3 74
+ cxl_region_set_interleave_granularity@LIBCXL_3 74
+ cxl_region_set_interleave_ways@LIBCXL_3 74
+ cxl_region_set_size@LIBCXL_3 74
+ cxl_region_set_target@LIBCXL_3 74
+ cxl_region_set_uuid@LIBCXL_3 74
  cxl_set_log_fn@LIBCXL_1 72
  cxl_set_log_priority@LIBCXL_1 72
  cxl_set_private_data@LIBCXL_1 72
