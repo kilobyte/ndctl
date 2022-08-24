@@ -3,3 +3,4 @@ usr/bin/daxctl
 usr/share/bash-completion/completions/daxctl
 usr/share/daxctl/daxctl.conf
 usr/share/man/man1/daxctl*
+debian/90-daxctl-device.rules lib/udev/rules.d
