@@ -66,9 +66,16 @@ static struct cmd_struct commands[] = {
 	{ "write-labels", .c_fn = cmd_write_labels },
 	{ "disable-memdev", .c_fn = cmd_disable_memdev },
 	{ "enable-memdev", .c_fn = cmd_enable_memdev },
+	{ "reserve-dpa", .c_fn = cmd_reserve_dpa },
+	{ "free-dpa", .c_fn = cmd_free_dpa },
 	{ "disable-port", .c_fn = cmd_disable_port },
 	{ "enable-port", .c_fn = cmd_enable_port },
 	{ "set-partition", .c_fn = cmd_set_partition },
+	{ "disable-bus", .c_fn = cmd_disable_bus },
+	{ "create-region", .c_fn = cmd_create_region },
+	{ "enable-region", .c_fn = cmd_enable_region },
+	{ "disable-region", .c_fn = cmd_disable_region },
+	{ "destroy-region", .c_fn = cmd_destroy_region },
 };
 
 int main(int argc, const char **argv)

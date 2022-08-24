@@ -2,9 +2,9 @@ cxl_src = [
   'cxl.c',
   'list.c',
   'port.c',
+  'bus.c',
+  'region.c',
   'memdev.c',
-  '../util/json.c',
-  '../util/log.c',
   'json.c',
   'filter.c',
 ]

@@ -29,7 +29,7 @@ build_rpm()
 	version="$(./git-version)"
 	release="f$(basename $(readlink -f /etc/mock/default.cfg) | cut -d- -f2)"
 	git archive  --format=tar --prefix="ndctl-${version}/" HEAD | gzip > ndctl-${version}.tar.gz
-	fedpkg --release $release --module-name ndctl mockbuild
+	fedpkg --release $release --name=ndctl mockbuild
 	[ "$?" -eq 0 ] || err "error building $ref"
 	mkdir -p release/rel_${ref}/
 	cp results_ndctl/*/*/*.x86_64.rpm release/rel_${ref}/
@@ -53,7 +53,7 @@ do_diff()
 	local old_lib="$(find . -regex "./release/rel_${old}/${pkg}-libs-[0-9]+.*" | head -1)"
 	local new_lib="$(find . -regex "./release/rel_${new}/${pkg}-libs-[0-9]+.*" | head -1)"
 
-	[ -n "$pkg" ] || err "specify a package for diff (ndctl, daxctl)"
+	[ -n "$pkg" ] || err "specify a package for diff (ndctl, daxctl, cxl)"
 	[ -n "$old_base" ] || err "$pkg: old_base empty, possible build failure"
 	[ -n "$new_base" ] || err "$pkg: new_base empty, possible build failure"
 
@@ -75,3 +75,4 @@ build_rpm $old > release/buildlog_$old 2>&1
 build_rpm $new > release/buildlog_$new 2>&1
 do_diff ndctl
 do_diff daxctl
+do_diff cxl

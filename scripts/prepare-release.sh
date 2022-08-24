@@ -100,7 +100,7 @@ gen_lists()
 }
 
 # Check libtool versions in Makefile.am.in
-# $1: lib name (currently libndctl or libdaxctl)
+# $1: lib name (currently libndctl, libdaxctl, or libcxl)
 check_libtool_vers()
 {
 	local lib="$1"
@@ -181,12 +181,13 @@ next_fix=$(next_fix "$last_fix")
 
 check_libtool_vers "libndctl"
 check_libtool_vers "libdaxctl"
+check_libtool_vers "libcxl"
 
 # HEAD~1 because HEAD would be the release commit
 gen_lists ${last_ref}..HEAD~1
 
 # For ABI diff purposes, use the latest fixes tag
-contrib/do_abidiff ${last_fix}..HEAD
+scripts/do_abidiff ${last_fix}..HEAD
 
 # once everything passes, update the git-version
 sed -i -e "s/DEF_VER=[0-9]\+.*/DEF_VER=${next_ref#v}/" git-version
