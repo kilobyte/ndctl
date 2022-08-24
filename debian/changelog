@@ -1,3 +1,11 @@
+ndctl (74-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Update symbols for libcxl.
+  * udev rule to configure dax devices at boot.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Wed, 24 Aug 2022 12:53:47 +0200
+
 ndctl (73-2) unstable; urgency=medium
 
   [ Gianfranco Costamagna ]
