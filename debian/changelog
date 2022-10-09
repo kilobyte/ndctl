@@ -1,3 +1,12 @@
+ndctl (74-2) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: (Closes: #1019490)
+    + cross.patch: Avoid an unnecessary compiler run test.
+    + Fix confusion of build and host.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Sun, 09 Oct 2022 21:07:29 +0200
+
 ndctl (74-1) unstable; urgency=medium
 
   * New upstream release.
