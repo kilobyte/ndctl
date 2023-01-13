@@ -63,8 +63,6 @@ Section: misc
 Architecture: linux-any
 Multi-Arch: foreign
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Breaks: ndctl (<< 63-1.3~)
-Replaces: ndctl (<< 63-1.3~)
 Description: Utility for managing the device DAX subsystem
  "DAX" are file system extensions to bypass the page cache and block layer to
  mmap persistent memory, from a PMEM block device, directly into a process
@@ -90,8 +88,6 @@ Section: libdevel
 Architecture: linux-any
 Multi-Arch: same
 Depends: libdaxctl1 (= ${binary:Version}), ${misc:Depends}
-Breaks: libndctl-dev (<< 63-1.3~)
-Replaces: libndctl-dev (<< 63-1.3~)
 Description: Development files for libdaxctl
  Header files and development library for compiling C programs to link
  with the libdaxctl library and manage the device DAX subsystem in the
