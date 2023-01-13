@@ -43,6 +43,9 @@ struct cxl_ctx {
 	void *userdata;
 	int memdevs_init;
 	int buses_init;
+	unsigned long timeout;
+	struct udev *udev;
+	struct udev_queue *udev_queue;
 	struct list_head memdevs;
 	struct list_head buses;
 	struct kmod_ctx *kmod_ctx;
@@ -77,6 +80,7 @@ static void free_target(struct cxl_target *target, struct list_head *head)
 		list_del_from(head, &target->list);
 	free(target->dev_path);
 	free(target->phys_path);
+	free(target->fw_path);
 	free(target);
 }
 
@@ -134,6 +138,7 @@ static void free_dport(struct cxl_dport *dport, struct list_head *head)
 	free(dport->dev_buf);
 	free(dport->dev_path);
 	free(dport->phys_path);
+	free(dport->fw_path);
 	free(dport);
 }
 
@@ -226,7 +231,9 @@ CXL_EXPORT void *cxl_get_private_data(struct cxl_ctx *ctx)
  */
 CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 {
+	struct udev_queue *udev_queue;
 	struct kmod_ctx *kmod_ctx;
+	struct udev *udev;
 	struct cxl_ctx *c;
 	int rc = 0;
 
@@ -237,7 +244,19 @@ CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 	kmod_ctx = kmod_new(NULL, NULL);
 	if (check_kmod(kmod_ctx) != 0) {
 		rc = -ENXIO;
-		goto out;
+		goto err_kmod;
+	}
+
+	udev = udev_new();
+	if (!udev) {
+		rc = -ENOMEM;
+		goto err_udev;
+	}
+
+	udev_queue = udev_queue_new(udev);
+	if (!udev_queue) {
+		rc = -ENOMEM;
+		goto err_udev_queue;
 	}
 
 	c->refcount = 1;
@@ -248,9 +267,17 @@ CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 	list_head_init(&c->memdevs);
 	list_head_init(&c->buses);
 	c->kmod_ctx = kmod_ctx;
+	c->udev = udev;
+	c->udev_queue = udev_queue;
+	c->timeout = 5000;
 
 	return 0;
-out:
+
+err_udev_queue:
+	udev_queue_unref(udev_queue);
+err_udev:
+	kmod_unref(kmod_ctx);
+err_kmod:
 	free(c);
 	return rc;
 }
@@ -291,14 +318,11 @@ CXL_EXPORT void cxl_unref(struct cxl_ctx *ctx)
 	list_for_each_safe(&ctx->buses, bus, _b, port.list)
 		free_bus(bus, &ctx->buses);
 
+	udev_queue_unref(ctx->udev_queue);
+	udev_unref(ctx->udev);
 	kmod_unref(ctx->kmod_ctx);
 	info(ctx, "context %p released\n", ctx);
 	free(ctx);
-}
-
-static int cxl_flush(struct cxl_ctx *ctx)
-{
-	return sysfs_write_attr(ctx, "/sys/bus/cxl/flush", "1\n");
 }
 
 /**
@@ -562,6 +586,40 @@ err_path:
 	return NULL;
 }
 
+static int cxl_flush(struct cxl_ctx *ctx)
+{
+	return sysfs_write_attr(ctx, "/sys/bus/cxl/flush", "1\n");
+}
+
+static int cxl_wait_probe(struct cxl_ctx *ctx)
+{
+	unsigned long tmo = ctx->timeout;
+	int rc, sleep = 0;
+
+	do {
+		rc = cxl_flush(ctx);
+		if (rc < 0)
+			break;
+		if (udev_queue_get_queue_is_empty(ctx->udev_queue))
+			break;
+		sleep++;
+		usleep(1000);
+	} while (ctx->timeout == 0 || tmo-- != 0);
+
+	if (sleep)
+		dbg(ctx, "waited %d millisecond%s...\n", sleep,
+		    sleep == 1 ? "" : "s");
+
+	return rc < 0 ? -ENXIO : 0;
+}
+
+static int device_parse(struct cxl_ctx *ctx, const char *base_path,
+			const char *dev_name, void *parent, add_dev_fn add_dev)
+{
+	cxl_wait_probe(ctx);
+	return sysfs_device_parse(ctx, base_path, dev_name, parent, add_dev);
+}
+
 static void cxl_regions_init(struct cxl_decoder *decoder)
 {
 	struct cxl_port *port = cxl_decoder_get_port(decoder);
@@ -576,8 +634,7 @@ static void cxl_regions_init(struct cxl_decoder *decoder)
 
 	decoder->regions_init = 1;
 
-	sysfs_device_parse(ctx, decoder->dev_path, "region", decoder,
-			   add_cxl_region);
+	device_parse(ctx, decoder->dev_path, "region", decoder, add_cxl_region);
 }
 
 CXL_EXPORT struct cxl_region *cxl_region_get_first(struct cxl_decoder *decoder)
@@ -1154,7 +1211,7 @@ static void *add_cxl_memdev(void *parent, int id, const char *cxlmem_base)
 		goto err_read;
 	memdev->buf_len = strlen(cxlmem_base) + 50;
 
-	sysfs_device_parse(ctx, cxlmem_base, "pmem", memdev, add_cxl_pmem);
+	device_parse(ctx, cxlmem_base, "pmem", memdev, add_cxl_pmem);
 
 	cxl_memdev_foreach(ctx, memdev_dup)
 		if (memdev_dup->id == memdev->id) {
@@ -1185,8 +1242,7 @@ static void cxl_memdevs_init(struct cxl_ctx *ctx)
 
 	ctx->memdevs_init = 1;
 
-	sysfs_device_parse(ctx, "/sys/bus/cxl/devices", "mem", ctx,
-			   add_cxl_memdev);
+	device_parse(ctx, "/sys/bus/cxl/devices", "mem", ctx, add_cxl_memdev);
 }
 
 CXL_EXPORT struct cxl_ctx *cxl_memdev_get_ctx(struct cxl_memdev *memdev)
@@ -1542,8 +1598,7 @@ static void cxl_endpoints_init(struct cxl_port *port)
 
 	port->endpoints_init = 1;
 
-	sysfs_device_parse(ctx, port->dev_path, "endpoint", port,
-			   add_cxl_endpoint);
+	device_parse(ctx, port->dev_path, "endpoint", port, add_cxl_endpoint);
 }
 
 CXL_EXPORT struct cxl_ctx *cxl_endpoint_get_ctx(struct cxl_endpoint *endpoint)
@@ -1856,6 +1911,15 @@ static void *add_cxl_decoder(void *parent, int id, const char *cxldecoder_base)
 		dbg(ctx, "%s: target%ld %s phys_path: %s\n", devname, i,
 		    target->dev_path,
 		    target->phys_path ? target->phys_path : "none");
+
+		sprintf(port->dev_buf, "%s/dport%d/firmware_node", port->dev_path, did);
+		target->fw_path = realpath(port->dev_buf, NULL);
+		dbg(ctx, "%s: target%ld %s fw_path: %s\n", devname, i,
+		    target->dev_path,
+		    target->fw_path ? target->fw_path : "none");
+
+		if (!target->phys_path && target->fw_path)
+			target->phys_path = strdup(target->dev_path);
 		list_add(&decoder->targets, &target->list);
 	}
 
@@ -1901,8 +1965,7 @@ static void cxl_decoders_init(struct cxl_port *port)
 
 	port->decoders_init = 1;
 
-	sysfs_device_parse(ctx, port->dev_path, decoder_fmt, port,
-			   add_cxl_decoder);
+	device_parse(ctx, port->dev_path, decoder_fmt, port, add_cxl_decoder);
 
 	free(decoder_fmt);
 }
@@ -2288,6 +2351,13 @@ CXL_EXPORT const char *cxl_target_get_physical_node(struct cxl_target *target)
 	return devpath_to_devname(target->phys_path);
 }
 
+CXL_EXPORT const char *cxl_target_get_firmware_node(struct cxl_target *target)
+{
+	if (!target->fw_path)
+		return NULL;
+	return devpath_to_devname(target->fw_path);
+}
+
 CXL_EXPORT struct cxl_target *
 cxl_decoder_get_target_by_memdev(struct cxl_decoder *decoder,
 				 struct cxl_memdev *memdev)
@@ -2354,7 +2424,7 @@ static void cxl_ports_init(struct cxl_port *port)
 
 	port->ports_init = 1;
 
-	sysfs_device_parse(ctx, port->dev_path, "port", port, add_cxl_port);
+	device_parse(ctx, port->dev_path, "port", port, add_cxl_port);
 }
 
 CXL_EXPORT struct cxl_ctx *cxl_port_get_ctx(struct cxl_port *port)
@@ -2569,6 +2639,12 @@ static void *add_cxl_dport(void *parent, int id, const char *cxldport_base)
 	sprintf(dport->dev_buf, "%s/physical_node", cxldport_base);
 	dport->phys_path = realpath(dport->dev_buf, NULL);
 
+	sprintf(dport->dev_buf, "%s/firmware_node", cxldport_base);
+	dport->fw_path = realpath(dport->dev_buf, NULL);
+
+	if (!dport->phys_path && dport->fw_path)
+		dport->phys_path = strdup(dport->dev_path);
+
 	cxl_dport_foreach(port, dport_dup)
 		if (dport_dup->id == dport->id) {
 			free_dport(dport, NULL);
@@ -2593,7 +2669,7 @@ static void cxl_dports_init(struct cxl_port *port)
 
 	port->dports_init = 1;
 
-	sysfs_device_parse(ctx, port->dev_path, "dport", port, add_cxl_dport);
+	device_parse(ctx, port->dev_path, "dport", port, add_cxl_dport);
 }
 
 CXL_EXPORT int cxl_port_get_nr_dports(struct cxl_port *port)
@@ -2627,6 +2703,13 @@ CXL_EXPORT const char *cxl_dport_get_physical_node(struct cxl_dport *dport)
 	if (!dport->phys_path)
 		return NULL;
 	return devpath_to_devname(dport->phys_path);
+}
+
+CXL_EXPORT const char *cxl_dport_get_firmware_node(struct cxl_dport *dport)
+{
+	if (!dport->fw_path)
+		return NULL;
+	return devpath_to_devname(dport->fw_path);
 }
 
 CXL_EXPORT int cxl_dport_get_id(struct cxl_dport *dport)
@@ -2702,8 +2785,7 @@ static void cxl_buses_init(struct cxl_ctx *ctx)
 
 	ctx->buses_init = 1;
 
-	sysfs_device_parse(ctx, "/sys/bus/cxl/devices", "root", ctx,
-			   add_cxl_bus);
+	device_parse(ctx, "/sys/bus/cxl/devices", "root", ctx, add_cxl_bus);
 }
 
 CXL_EXPORT struct cxl_bus *cxl_bus_get_first(struct cxl_ctx *ctx)
@@ -3139,6 +3221,169 @@ do {									\
 		return rc;						\
 	return !!(c->field & mask);					\
 } while(0)
+
+CXL_EXPORT struct cxl_cmd *
+cxl_cmd_new_get_alert_config(struct cxl_memdev *memdev)
+{
+	return cxl_cmd_new_generic(memdev, CXL_MEM_COMMAND_ID_GET_ALERT_CONFIG);
+}
+
+#define cmd_alert_get_valid_alerts_field(c, m)                                 \
+	cmd_get_field_u8_mask(c, get_alert_config, GET_ALERT_CONFIG,           \
+			      valid_alerts, m)
+
+CXL_EXPORT int
+cxl_cmd_alert_config_life_used_prog_warn_threshold_valid(struct cxl_cmd *cmd)
+{
+	cmd_alert_get_valid_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_VALID_ALERTS_LIFE_USED_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_dev_over_temperature_prog_warn_threshold_valid(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_valid_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_VALID_ALERTS_DEV_OVER_TEMPERATURE_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_dev_under_temperature_prog_warn_threshold_valid(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_valid_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_VALID_ALERTS_DEV_UNDER_TEMPERATURE_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_corrected_volatile_mem_err_prog_warn_threshold_valid(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_valid_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_VALID_ALERTS_CORRECTED_VOLATILE_MEM_ERR_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_corrected_pmem_err_prog_warn_threshold_valid(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_valid_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_VALID_ALERTS_CORRECTED_PMEM_ERR_PROG_WARN_THRESHOLD_MASK);
+}
+
+#define cmd_alert_get_prog_alerts_field(c, m)                                  \
+	cmd_get_field_u8_mask(c, get_alert_config, GET_ALERT_CONFIG,           \
+			      programmable_alerts, m)
+
+CXL_EXPORT int
+cxl_cmd_alert_config_life_used_prog_warn_threshold_writable(struct cxl_cmd *cmd)
+{
+	cmd_alert_get_prog_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_PROG_ALERTS_LIFE_USED_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_dev_over_temperature_prog_warn_threshold_writable(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_prog_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_PROG_ALERTS_DEV_OVER_TEMPERATURE_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_dev_under_temperature_prog_warn_threshold_writable(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_prog_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_PROG_ALERTS_DEV_UNDER_TEMPERATURE_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_corrected_volatile_mem_err_prog_warn_threshold_writable(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_prog_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_PROG_ALERTS_CORRECTED_VOLATILE_MEM_ERR_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_corrected_pmem_err_prog_warn_threshold_writable(
+	struct cxl_cmd *cmd)
+{
+	cmd_alert_get_prog_alerts_field(
+		cmd,
+		CXL_CMD_ALERT_CONFIG_PROG_ALERTS_CORRECTED_PMEM_ERR_PROG_WARN_THRESHOLD_MASK);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_life_used_crit_alert_threshold(struct cxl_cmd *cmd)
+{
+	cmd_get_field_u8(cmd, get_alert_config, GET_ALERT_CONFIG,
+			 life_used_crit_alert_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_life_used_prog_warn_threshold(struct cxl_cmd *cmd)
+{
+	cmd_get_field_u8(cmd, get_alert_config, GET_ALERT_CONFIG,
+			 life_used_prog_warn_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_dev_over_temperature_crit_alert_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  dev_over_temperature_crit_alert_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_dev_under_temperature_crit_alert_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  dev_under_temperature_crit_alert_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_dev_over_temperature_prog_warn_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  dev_over_temperature_prog_warn_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_dev_under_temperature_prog_warn_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  dev_under_temperature_prog_warn_threshold);
+}
+
+CXL_EXPORT int
+cxl_cmd_alert_config_get_corrected_volatile_mem_err_prog_warn_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  corrected_volatile_mem_err_prog_warn_threshold);
+}
+
+CXL_EXPORT int cxl_cmd_alert_config_get_corrected_pmem_err_prog_warn_threshold(
+	struct cxl_cmd *cmd)
+{
+	cmd_get_field_u16(cmd, get_alert_config, GET_ALERT_CONFIG,
+			  corrected_pmem_err_prog_warn_threshold);
+}
 
 CXL_EXPORT struct cxl_cmd *cxl_cmd_new_get_health_info(
 		struct cxl_memdev *memdev)
