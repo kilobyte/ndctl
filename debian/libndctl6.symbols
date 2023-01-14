@@ -16,6 +16,7 @@ libndctl.so.6 libndctl6 #MINVER#
  LIBNDCTL_25@LIBNDCTL_25 70
  LIBNDCTL_26@LIBNDCTL_26 72
  LIBNDCTL_27@LIBNDCTL_27 73
+ LIBNDCTL_28@LIBNDCTL_28 75
  LIBNDCTL_3@LIBNDCTL_3 63
  ndctl_bb_get_block@LIBNDCTL_14 63
  ndctl_bb_get_count@LIBNDCTL_14 63
@@ -66,6 +67,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_bus_get_revision@LIBNDCTL_3 63
  ndctl_bus_get_scrub_count@LIBNDCTL_14 63
  ndctl_bus_get_scrub_state@LIBNDCTL_15 63
+ ndctl_bus_has_cxl@LIBNDCTL_28 75
  ndctl_bus_has_error_injection@LIBNDCTL_14 63
  ndctl_bus_has_nfit@LIBNDCTL_3 63
  ndctl_bus_has_of_node@LIBNDCTL_24 69
@@ -187,6 +189,7 @@ libndctl.so.6 libndctl6 #MINVER#
  ndctl_dimm_cmd_new_smart_threshold@LIBNDCTL_3 63
  ndctl_dimm_cmd_new_vendor_specific@LIBNDCTL_3 63
  ndctl_dimm_disable@LIBNDCTL_3 63
+ ndctl_dimm_disable_master_passphrase@LIBNDCTL_28 75
  ndctl_dimm_disable_passphrase@LIBNDCTL_19 65
  ndctl_dimm_enable@LIBNDCTL_3 63
  ndctl_dimm_failed_arm@LIBNDCTL_3 63

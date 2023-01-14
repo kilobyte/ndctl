@@ -3,6 +3,7 @@ libcxl.so.1 libcxl1 #MINVER#
  LIBCXL_1@LIBCXL_1 72
  LIBCXL_2@LIBCXL_2 73
  LIBCXL_3@LIBCXL_3 74
+ LIBCXL_4@LIBCXL_4 75
  cxl_bus_disable_invalidate@LIBCXL_2 74
  cxl_bus_get_ctx@LIBCXL_2 73
  cxl_bus_get_devname@LIBCXL_2 73
@@ -11,6 +12,24 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_bus_get_next@LIBCXL_2 73
  cxl_bus_get_port@LIBCXL_2 73
  cxl_bus_get_provider@LIBCXL_2 73
+ cxl_cmd_alert_config_corrected_pmem_err_prog_warn_threshold_valid@LIBCXL_4 75
+ cxl_cmd_alert_config_corrected_pmem_err_prog_warn_threshold_writable@LIBCXL_4 75
+ cxl_cmd_alert_config_corrected_volatile_mem_err_prog_warn_threshold_valid@LIBCXL_4 75
+ cxl_cmd_alert_config_corrected_volatile_mem_err_prog_warn_threshold_writable@LIBCXL_4 75
+ cxl_cmd_alert_config_dev_over_temperature_prog_warn_threshold_valid@LIBCXL_4 75
+ cxl_cmd_alert_config_dev_over_temperature_prog_warn_threshold_writable@LIBCXL_4 75
+ cxl_cmd_alert_config_dev_under_temperature_prog_warn_threshold_valid@LIBCXL_4 75
+ cxl_cmd_alert_config_dev_under_temperature_prog_warn_threshold_writable@LIBCXL_4 75
+ cxl_cmd_alert_config_get_corrected_pmem_err_prog_warn_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_corrected_volatile_mem_err_prog_warn_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_dev_over_temperature_crit_alert_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_dev_over_temperature_prog_warn_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_dev_under_temperature_crit_alert_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_dev_under_temperature_prog_warn_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_life_used_crit_alert_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_get_life_used_prog_warn_threshold@LIBCXL_4 75
+ cxl_cmd_alert_config_life_used_prog_warn_threshold_valid@LIBCXL_4 75
+ cxl_cmd_alert_config_life_used_prog_warn_threshold_writable@LIBCXL_4 75
  cxl_cmd_get_devname@LIBCXL_1 72
  cxl_cmd_get_mbox_status@LIBCXL_1 72
  cxl_cmd_get_out_size@LIBCXL_1 72
@@ -48,6 +67,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_identify_get_persistent_only_size@LIBCXL_2 73
  cxl_cmd_identify_get_total_size@LIBCXL_2 73
  cxl_cmd_identify_get_volatile_only_size@LIBCXL_2 73
+ cxl_cmd_new_get_alert_config@LIBCXL_4 75
  cxl_cmd_new_get_health_info@LIBCXL_1 72
  cxl_cmd_new_get_partition@LIBCXL_2 73
  cxl_cmd_new_identify@LIBCXL_1 72
@@ -98,6 +118,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_decoder_set_dpa_size@LIBCXL_3 74
  cxl_decoder_set_mode@LIBCXL_3 74
  cxl_dport_get_devname@LIBCXL_2 73
+ cxl_dport_get_firmware_node@LIBCXL_4 75
  cxl_dport_get_first@LIBCXL_2 73
  cxl_dport_get_id@LIBCXL_2 73
  cxl_dport_get_next@LIBCXL_2 73
@@ -200,6 +221,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_set_userdata@LIBCXL_1 72
  cxl_target_get_decoder@LIBCXL_2 73
  cxl_target_get_devname@LIBCXL_2 73
+ cxl_target_get_firmware_node@LIBCXL_4 75
  cxl_target_get_first@LIBCXL_2 73
  cxl_target_get_id@LIBCXL_2 73
  cxl_target_get_next@LIBCXL_2 73
