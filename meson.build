@@ -1,5 +1,5 @@
 project('ndctl', 'c',
-  version : '74',
+  version : '76',
   license : [
     'GPL-2.0',
     'LGPL-2.1',
@@ -143,6 +143,9 @@ kmod = dependency('libkmod')
 libudev = dependency('libudev')
 uuid = dependency('uuid')
 json = dependency('json-c')
+traceevent = dependency('libtraceevent')
+tracefs = dependency('libtracefs')
+
 if get_option('docs').enabled()
   if get_option('asciidoctor').enabled()
     asciidoc = find_program('asciidoctor', required : true)
@@ -292,15 +295,15 @@ config_h = configure_file(
 add_project_arguments('-include', 'config.h', language : 'c')
 
 LIBNDCTL_CURRENT=27
-LIBNDCTL_REVISION=0
+LIBNDCTL_REVISION=1
 LIBNDCTL_AGE=21
 
 LIBDAXCTL_CURRENT=6
-LIBDAXCTL_REVISION=1
+LIBDAXCTL_REVISION=2
 LIBDAXCTL_AGE=5
 
 LIBCXL_CURRENT=4
-LIBCXL_REVISION=0
+LIBCXL_REVISION=1
 LIBCXL_AGE=3
 
 root_inc = include_directories(['.', 'ndctl', ])
