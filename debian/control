@@ -13,6 +13,8 @@ Build-Depends: debhelper-compat (= 13),
                libkeyutils-dev,
                asciidoctor,
                libiniparser-dev,
+               libtraceevent-dev,
+               libtracefs-dev,
                meson,
                cmake,
 Rules-Requires-Root: no
