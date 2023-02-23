@@ -1,3 +1,11 @@
+ndctl (76-1) unstable; urgency=medium
+
+  * New upstream release (mostly fixes).
+  * Add libtrace{fs,event} to B-Deps.
+  * No cxl-monitor automation for now (b/c freeze).
+
+ -- Adam Borowski <kilobyte@angband.pl>  Thu, 23 Feb 2023 01:16:24 +0100
+
 ndctl (75-1) unstable; urgency=medium
 
   * New upstream release.
