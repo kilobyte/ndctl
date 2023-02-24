@@ -1,3 +1,9 @@
+ndctl (76.1-1) unstable; urgency=medium
+
+  * Freshest upstream fixes...
+
+ -- Adam Borowski <kilobyte@angband.pl>  Fri, 24 Feb 2023 22:35:47 +0100
+
 ndctl (76-1) unstable; urgency=medium
 
   * New upstream release (mostly fixes).
