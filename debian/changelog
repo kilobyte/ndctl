@@ -1,3 +1,13 @@
+ndctl (77-1) experimental; urgency=medium
+
+  * New upstream release.
+  * Split out cxl into its own package.
+  * Drop obsolete README.Debian.
+  * Update libcxl's symbols.
+  * Add and install a .service and init script for cxl-monitor.
+
+ -- Adam Borowski <kilobyte@angband.pl>  Wed, 03 May 2023 17:19:40 +0200
+
 ndctl (76.1-1) unstable; urgency=medium
 
   * Freshest upstream fixes...
