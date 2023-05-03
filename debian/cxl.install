@@ -1,3 +1,4 @@
 usr/bin/cxl
 usr/share/bash-completion/completions/cxl
 usr/share/man/man1/cxl*
+cxl/*.service lib/systemd/system
