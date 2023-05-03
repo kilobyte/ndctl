@@ -4,6 +4,7 @@ libcxl.so.1 libcxl1 #MINVER#
  LIBCXL_2@LIBCXL_2 73
  LIBCXL_3@LIBCXL_3 74
  LIBCXL_4@LIBCXL_4 75
+ LIBCXL_5@LIBCXL_5 77
  cxl_bus_disable_invalidate@LIBCXL_2 74
  cxl_bus_get_ctx@LIBCXL_2 73
  cxl_bus_get_devname@LIBCXL_2 73
@@ -87,6 +88,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_submit@LIBCXL_1 72
  cxl_cmd_unref@LIBCXL_1 72
  cxl_decoder_create_pmem_region@LIBCXL_2 74
+ cxl_decoder_create_ram_region@LIBCXL_5 77
  cxl_decoder_get_by_name@LIBCXL_3 74
  cxl_decoder_get_ctx@LIBCXL_2 73
  cxl_decoder_get_devname@LIBCXL_2 73
@@ -148,6 +150,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_memdev_get_bus@LIBCXL_2 73
  cxl_memdev_get_ctx@LIBCXL_1 72
  cxl_port_get_depth@LIBCXL_2 74
+ cxl_port_get_parent_dport@LIBCXL_5 77
  cxl_memdev_get_devname@LIBCXL_1 72
  cxl_memdev_get_endpoint@LIBCXL_2 73
  cxl_memdev_get_firmware_verison@LIBCXL_1 72
@@ -198,6 +201,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_region_disable@LIBCXL_3 74
  cxl_region_enable@LIBCXL_3 74
  cxl_region_get_ctx@LIBCXL_3 74
+ cxl_region_get_daxctl_region@LIBCXL_5 77
  cxl_region_get_decoder@LIBCXL_3 74
  cxl_region_get_devname@LIBCXL_3 74
  cxl_region_get_first@LIBCXL_3 74
@@ -212,6 +216,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_region_is_enabled@LIBCXL_3 74
  cxl_region_set_interleave_granularity@LIBCXL_3 74
  cxl_region_set_interleave_ways@LIBCXL_3 74
+ cxl_region_get_mode@LIBCXL_5 77
  cxl_region_set_size@LIBCXL_3 74
  cxl_region_set_target@LIBCXL_3 74
  cxl_region_set_uuid@LIBCXL_3 74
