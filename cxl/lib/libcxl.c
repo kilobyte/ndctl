@@ -26,6 +26,7 @@
 #include <util/bitmap.h>
 #include <cxl/cxl_mem.h>
 #include <cxl/libcxl.h>
+#include <daxctl/libdaxctl.h>
 #include "private.h"
 
 /**
@@ -49,6 +50,7 @@ struct cxl_ctx {
 	struct list_head memdevs;
 	struct list_head buses;
 	struct kmod_ctx *kmod_ctx;
+	struct daxctl_ctx *daxctl_ctx;
 	void *private_data;
 };
 
@@ -165,6 +167,7 @@ static void __free_port(struct cxl_port *port, struct list_head *head)
 	free(port->dev_buf);
 	free(port->dev_path);
 	free(port->uport);
+	free(port->parent_dport_path);
 }
 
 static void free_port(struct cxl_port *port, struct list_head *head)
@@ -231,6 +234,7 @@ CXL_EXPORT void *cxl_get_private_data(struct cxl_ctx *ctx)
  */
 CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 {
+	struct daxctl_ctx *daxctl_ctx;
 	struct udev_queue *udev_queue;
 	struct kmod_ctx *kmod_ctx;
 	struct udev *udev;
@@ -240,6 +244,10 @@ CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 	c = calloc(1, sizeof(struct cxl_ctx));
 	if (!c)
 		return -ENOMEM;
+
+	rc = daxctl_new(&daxctl_ctx);
+	if (rc)
+		goto err_daxctl;
 
 	kmod_ctx = kmod_new(NULL, NULL);
 	if (check_kmod(kmod_ctx) != 0) {
@@ -267,6 +275,7 @@ CXL_EXPORT int cxl_new(struct cxl_ctx **ctx)
 	list_head_init(&c->memdevs);
 	list_head_init(&c->buses);
 	c->kmod_ctx = kmod_ctx;
+	c->daxctl_ctx = daxctl_ctx;
 	c->udev = udev;
 	c->udev_queue = udev_queue;
 	c->timeout = 5000;
@@ -278,6 +287,8 @@ err_udev_queue:
 err_udev:
 	kmod_unref(kmod_ctx);
 err_kmod:
+	daxctl_unref(daxctl_ctx);
+err_daxctl:
 	free(c);
 	return rc;
 }
@@ -321,6 +332,7 @@ CXL_EXPORT void cxl_unref(struct cxl_ctx *ctx)
 	udev_queue_unref(ctx->udev_queue);
 	udev_unref(ctx->udev);
 	kmod_unref(ctx->kmod_ctx);
+	daxctl_unref(ctx->daxctl_ctx);
 	info(ctx, "context %p released\n", ctx);
 	free(ctx);
 }
@@ -561,6 +573,12 @@ static void *add_cxl_region(void *parent, int id, const char *cxlregion_base)
 	else
 		region->decode_state = strtoul(buf, NULL, 0);
 
+	sprintf(path, "%s/mode", cxlregion_base);
+	if (sysfs_read_attr(ctx, path, buf) < 0)
+		region->mode = CXL_DECODER_MODE_NONE;
+	else
+		region->mode = cxl_decoder_mode_from_ident(buf);
+
 	sprintf(path, "%s/modalias", cxlregion_base);
 	if (sysfs_read_attr(ctx, path, buf) == 0)
 		region->module = util_modalias_to_module(ctx, buf);
@@ -686,6 +704,11 @@ CXL_EXPORT unsigned long long cxl_region_get_resource(struct cxl_region *region)
 	return region->start;
 }
 
+CXL_EXPORT enum cxl_decoder_mode cxl_region_get_mode(struct cxl_region *region)
+{
+	return region->mode;
+}
+
 CXL_EXPORT unsigned int
 cxl_region_get_interleave_ways(struct cxl_region *region)
 {
@@ -733,6 +756,34 @@ cxl_region_get_target_decoder(struct cxl_region *region, int position)
 		return NULL;
 	}
 	return decoder;
+}
+
+CXL_EXPORT struct daxctl_region *
+cxl_region_get_daxctl_region(struct cxl_region *region)
+{
+	const char *devname = cxl_region_get_devname(region);
+	struct cxl_ctx *ctx = cxl_region_get_ctx(region);
+	char *path = region->dev_buf;
+	int len = region->buf_len;
+	uuid_t uuid = { 0 };
+	struct stat st;
+
+	if (region->dax_region)
+		return region->dax_region;
+
+	if (snprintf(region->dev_buf, len, "%s/dax_region%d", region->dev_path,
+		     region->id) >= len) {
+		err(ctx, "%s: buffer too small!\n", devname);
+		return NULL;
+	}
+
+	if (stat(path, &st) < 0)
+		return NULL;
+
+	region->dax_region =
+		daxctl_new_region(ctx->daxctl_ctx, region->id, uuid, path);
+
+	return region->dax_region;
 }
 
 CXL_EXPORT int cxl_region_set_size(struct cxl_region *region,
@@ -1407,8 +1458,9 @@ CXL_EXPORT int cxl_memdev_enable(struct cxl_memdev *memdev)
 	return 0;
 }
 
-static struct cxl_endpoint *cxl_port_find_endpoint(struct cxl_port *parent_port,
-						   struct cxl_memdev *memdev)
+static struct cxl_endpoint *
+cxl_port_recurse_endpoint(struct cxl_port *parent_port,
+			  struct cxl_memdev *memdev)
 {
 	struct cxl_endpoint *endpoint;
 	struct cxl_port *port;
@@ -1418,12 +1470,24 @@ static struct cxl_endpoint *cxl_port_find_endpoint(struct cxl_port *parent_port,
 			if (strcmp(cxl_endpoint_get_host(endpoint),
 				   cxl_memdev_get_devname(memdev)) == 0)
 				return endpoint;
-		endpoint = cxl_port_find_endpoint(port, memdev);
+		endpoint = cxl_port_recurse_endpoint(port, memdev);
 		if (endpoint)
 			return endpoint;
 	}
 
 	return NULL;
+}
+
+static struct cxl_endpoint *cxl_port_find_endpoint(struct cxl_port *parent_port,
+						   struct cxl_memdev *memdev)
+{
+	struct cxl_endpoint *endpoint;
+
+	cxl_endpoint_foreach(parent_port, endpoint)
+		if (strcmp(cxl_endpoint_get_host(endpoint),
+			   cxl_memdev_get_devname(memdev)) == 0)
+			return endpoint;
+	return cxl_port_recurse_endpoint(parent_port, memdev);
 }
 
 CXL_EXPORT struct cxl_endpoint *
@@ -1541,6 +1605,20 @@ static int cxl_port_init(struct cxl_port *port, struct cxl_port *parent_port,
 	port->uport = realpath(port->dev_buf, NULL);
 	if (!port->uport)
 		goto err;
+
+	/*
+	 * CXL root devices have no parents and level 1 ports are both
+	 * CXL root targets and hosts of the next level, so:
+	 *     parent_dport == uport
+	 * ...at depth == 1
+	 */
+	if (port->depth > 1) {
+		rc = snprintf(port->dev_buf, port->buf_len, "%s/parent_dport",
+			      cxlport_base);
+		if (rc >= port->buf_len)
+			goto err;
+		port->parent_dport_path = realpath(port->dev_buf, NULL);
+	}
 
 	sprintf(path, "%s/modalias", cxlport_base);
 	if (sysfs_read_attr(ctx, path, buf) == 0)
@@ -2223,8 +2301,8 @@ cxl_decoder_get_region(struct cxl_decoder *decoder)
 	return NULL;
 }
 
-CXL_EXPORT struct cxl_region *
-cxl_decoder_create_pmem_region(struct cxl_decoder *decoder)
+static struct cxl_region *cxl_decoder_create_region(struct cxl_decoder *decoder,
+						    enum cxl_decoder_mode mode)
 {
 	struct cxl_ctx *ctx = cxl_decoder_get_ctx(decoder);
 	char *path = decoder->dev_buf;
@@ -2232,7 +2310,11 @@ cxl_decoder_create_pmem_region(struct cxl_decoder *decoder)
 	struct cxl_region *region;
 	int rc;
 
-	sprintf(path, "%s/create_pmem_region", decoder->dev_path);
+	if (mode == CXL_DECODER_MODE_PMEM)
+		sprintf(path, "%s/create_pmem_region", decoder->dev_path);
+	else if (mode == CXL_DECODER_MODE_RAM)
+		sprintf(path, "%s/create_ram_region", decoder->dev_path);
+
 	rc = sysfs_read_attr(ctx, path, buf);
 	if (rc < 0) {
 		err(ctx, "failed to read new region name: %s\n",
@@ -2269,6 +2351,18 @@ cxl_decoder_create_pmem_region(struct cxl_decoder *decoder)
 
  found:
 	return region;
+}
+
+CXL_EXPORT struct cxl_region *
+cxl_decoder_create_pmem_region(struct cxl_decoder *decoder)
+{
+	return cxl_decoder_create_region(decoder, CXL_DECODER_MODE_PMEM);
+}
+
+CXL_EXPORT struct cxl_region *
+cxl_decoder_create_ram_region(struct cxl_decoder *decoder)
+{
+	return cxl_decoder_create_region(decoder, CXL_DECODER_MODE_RAM);
 }
 
 CXL_EXPORT int cxl_decoder_get_nr_targets(struct cxl_decoder *decoder)
@@ -2515,6 +2609,29 @@ CXL_EXPORT struct cxl_bus *cxl_port_get_bus(struct cxl_port *port)
 CXL_EXPORT const char *cxl_port_get_host(struct cxl_port *port)
 {
 	return devpath_to_devname(port->uport);
+}
+
+CXL_EXPORT struct cxl_dport *cxl_port_get_parent_dport(struct cxl_port *port)
+{
+	struct cxl_port *parent;
+	struct cxl_dport *dport;
+	const char *name;
+
+	if (port->parent_dport)
+		return port->parent_dport;
+
+	if (!port->parent_dport_path)
+		return NULL;
+
+	parent = cxl_port_get_parent(port);
+	name = devpath_to_devname(port->parent_dport_path);
+	cxl_dport_foreach(parent, dport)
+		if (strcmp(cxl_dport_get_devname(dport), name) == 0) {
+			port->parent_dport = dport;
+			return dport;
+		}
+
+	return NULL;
 }
 
 CXL_EXPORT bool cxl_port_hosts_memdev(struct cxl_port *port,

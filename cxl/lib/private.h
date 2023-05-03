@@ -63,6 +63,8 @@ struct cxl_port {
 	size_t buf_len;
 	char *dev_path;
 	char *uport;
+	char *parent_dport_path;
+	struct cxl_dport *parent_dport;
 	int ports_init;
 	int endpoints_init;
 	int decoders_init;
@@ -149,6 +151,8 @@ struct cxl_region {
 	unsigned int interleave_ways;
 	unsigned int interleave_granularity;
 	enum cxl_decode_state decode_state;
+	enum cxl_decoder_mode mode;
+	struct daxctl_region *dax_region;
 	struct kmod_module *module;
 	struct list_head mappings;
 };
