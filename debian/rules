@@ -25,6 +25,7 @@ override_dh_clean:
 
 override_dh_installinit:
 	dh_installinit -p ndctl --init-script=ndctl-monitor
+	dh_installinit -p cxl --init-script=cxl-monitor
 
 override_dh_install:
 	mv debian/tmp/usr/$(DEB_HOST_MULTIARCH)/* debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/
