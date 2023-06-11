@@ -19,7 +19,7 @@ Build-Depends: debhelper-compat (= 13),
                cmake,
 Rules-Requires-Root: no
 Homepage: https://github.com/pmem/ndctl
-Vcs-Git: https://github.com/kilobyte/ndctl -b debian
+Vcs-Git: https://github.com/kilobyte/ndctl.git -b debian
 Vcs-Browser: https://github.com/kilobyte/ndctl/tree/debian
 
 Package: ndctl
