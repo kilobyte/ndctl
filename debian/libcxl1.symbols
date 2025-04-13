@@ -5,6 +5,9 @@ libcxl.so.1 libcxl1 #MINVER#
  LIBCXL_3@LIBCXL_3 74
  LIBCXL_4@LIBCXL_4 75
  LIBCXL_5@LIBCXL_5 77
+ LIBCXL_6@LIBCXL_6 81
+ LIBCXL_7@LIBCXL_7 81
+ LIBECXL_8@LIBECXL_8 81
  cxl_bus_disable_invalidate@LIBCXL_2 74
  cxl_bus_get_ctx@LIBCXL_2 73
  cxl_bus_get_devname@LIBCXL_2 73
@@ -31,6 +34,18 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_alert_config_get_life_used_prog_warn_threshold@LIBCXL_4 75
  cxl_cmd_alert_config_life_used_prog_warn_threshold_valid@LIBCXL_4 75
  cxl_cmd_alert_config_life_used_prog_warn_threshold_writable@LIBCXL_4 75
+ cxl_cmd_alert_config_set_corrected_pmem_err_prog_warn_threshold@LIBCXL_7 81
+ cxl_cmd_alert_config_set_corrected_volatile_mem_err_prog_warn_threshold@LIBCXL_7 81
+ cxl_cmd_alert_config_set_dev_over_temperature_prog_warn_threshold@LIBCXL_7 81
+ cxl_cmd_alert_config_set_dev_under_temperature_prog_warn_threshold@LIBCXL_7 81
+ cxl_cmd_alert_config_set_enable_alert_actions@LIBCXL_7 81
+ cxl_cmd_alert_config_set_life_used_prog_warn_threshold@LIBCXL_7 81
+ cxl_cmd_alert_config_set_valid_alert_actions@LIBCXL_7 81
+ cxl_cmd_fw_info_get_active_slot@LIBCXL_6 81
+ cxl_cmd_fw_info_get_fw_ver@LIBCXL_6 81
+ cxl_cmd_fw_info_get_num_slots@LIBCXL_6 81
+ cxl_cmd_fw_info_get_online_activate_capable@LIBCXL_6 81
+ cxl_cmd_fw_info_get_staged_slot@LIBCXL_6 81
  cxl_cmd_get_devname@LIBCXL_1 72
  cxl_cmd_get_mbox_status@LIBCXL_1 72
  cxl_cmd_get_out_size@LIBCXL_1 72
@@ -69,11 +84,13 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_cmd_identify_get_total_size@LIBCXL_2 73
  cxl_cmd_identify_get_volatile_only_size@LIBCXL_2 73
  cxl_cmd_new_get_alert_config@LIBCXL_4 75
+ cxl_cmd_new_get_fw_info@LIBCXL_6 81
  cxl_cmd_new_get_health_info@LIBCXL_1 72
  cxl_cmd_new_get_partition@LIBCXL_2 73
  cxl_cmd_new_identify@LIBCXL_1 72
  cxl_cmd_new_raw@LIBCXL_1 72
  cxl_cmd_new_read_label@LIBCXL_1 72
+ cxl_cmd_new_set_alert_config@LIBCXL_7 81
  cxl_cmd_new_set_partition@LIBCXL_2 73
  cxl_cmd_new_write_label@LIBCXL_1 72
  cxl_cmd_partition_get_active_persistent_size@LIBCXL_2 73
@@ -145,8 +162,11 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_mapping_get_first@LIBCXL_3 74
  cxl_mapping_get_next@LIBCXL_3 74
  cxl_mapping_get_position@LIBCXL_3 74
+ cxl_memdev_cancel_fw_update@LIBCXL_6 81
  cxl_memdev_disable_invalidate@LIBCXL_2 73
  cxl_memdev_enable@LIBCXL_2 73
+ cxl_memdev_fw_update_get_remaining@LIBCXL_6 81
+ cxl_memdev_fw_update_in_progress@LIBCXL_6 8
  cxl_memdev_get_bus@LIBCXL_2 73
  cxl_memdev_get_ctx@LIBCXL_1 72
  cxl_port_get_depth@LIBCXL_2 74
@@ -162,15 +182,21 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_memdev_get_minor@LIBCXL_1 72
  cxl_memdev_get_next@LIBCXL_1 72
  cxl_memdev_get_numa_node@LIBCXL_2 73
+ cxl_memdev_get_pmem_qos_class@LIBCXL_7 81
  cxl_memdev_get_pmem_size@LIBCXL_1 72
+ cxl_memdev_get_ram_qos_class@LIBCXL_7 81
  cxl_memdev_get_ram_size@LIBCXL_1 72
  cxl_memdev_get_serial@LIBCXL_2 73
  cxl_memdev_is_enabled@LIBCXL_2 73
  cxl_memdev_nvdimm_bridge_active@LIBCXL_1 72
  cxl_memdev_read_label@LIBCXL_1 72
+ cxl_memdev_trigger_poison_list@LIBECXL_8 81
+ cxl_memdev_update_fw@LIBCXL_6 81
+ cxl_memdev_wait_sanitize@LIBCXL_7 81
  cxl_memdev_write_label@LIBCXL_1 72
  cxl_memdev_zero_label@LIBCXL_1 72
  cxl_new@LIBCXL_1 72
+ cxl_port_decoders_committed@LIBCXL_7 81
  cxl_port_disable_invalidate@LIBCXL_2 73
  cxl_port_enable@LIBCXL_2 73
  cxl_port_get_bus@LIBCXL_2 73
@@ -214,12 +240,15 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_region_get_target_decoder@LIBCXL_3 74
  cxl_region_get_uuid@LIBCXL_3 74
  cxl_region_is_enabled@LIBCXL_3 74
+ cxl_region_qos_class_mismatch@LIBCXL_7 81
  cxl_region_set_interleave_granularity@LIBCXL_3 74
  cxl_region_set_interleave_ways@LIBCXL_3 74
  cxl_region_get_mode@LIBCXL_5 77
  cxl_region_set_size@LIBCXL_3 74
  cxl_region_set_target@LIBCXL_3 74
  cxl_region_set_uuid@LIBCXL_3 74
+ cxl_region_trigger_poison_list@LIBECXL_8 81
+ cxl_root_decoder_get_qos_class@LIBCXL_7 81
  cxl_set_log_fn@LIBCXL_1 72
  cxl_set_log_priority@LIBCXL_1 72
  cxl_set_private_data@LIBCXL_1 72
