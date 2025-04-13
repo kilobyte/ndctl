@@ -4,7 +4,7 @@ Section: libs
 Priority: optional
 Standards-Version: 4.6.2
 Build-Depends: debhelper-compat (= 13),
-               pkg-config,
+               pkgconf,
                libkmod-dev,
                libudev-dev,
                uuid-dev,
@@ -17,6 +17,7 @@ Build-Depends: debhelper-compat (= 13),
                libtracefs-dev,
                meson,
                cmake,
+               systemd-dev,
 Rules-Requires-Root: no
 Homepage: https://github.com/pmem/ndctl
 Vcs-Git: https://github.com/kilobyte/ndctl -b debian

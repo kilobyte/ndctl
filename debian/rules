@@ -8,7 +8,7 @@ include /usr/share/dpkg/architecture.mk
 	dh $@
 
 override_dh_auto_configure:
-	dh_auto_configure -- -Dsystemd=disabled
+	dh_auto_configure
 
 override_dh_clean:
 	# created by tests and not cleaned up after

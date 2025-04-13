@@ -1,7 +1,7 @@
 etc/ndctl
 etc/ndctl.conf.d
 etc/modprobe.d/nvdimm-security.conf
-ndctl/*.service lib/systemd/system
+usr/lib/systemd/system/ndctl-monitor.service
 usr/bin/ndctl
 usr/share/bash-completion/completions/ndctl
 usr/share/man/man1/ndctl*

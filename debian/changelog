@@ -1,3 +1,21 @@
+ndctl (77-2.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Build-Depend on systemd-dev for systemdunitdir, udevrulesdir.
+    Enable systemd build option.
+    Patch daxctl udev rules instead of using debian-specific file.
+    (Closes: #1073734)
+
+ -- Chris Hofstaedtler <zeha@debian.org>  Tue, 30 Jul 2024 14:27:43 +0200
+
+ndctl (77-2.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Install systemd units into /usr. (Closes: #1073734)
+  * Update Build-Depends: pkg-config to pkgconf.
+
+ -- Chris Hofstaedtler <zeha@debian.org>  Thu, 18 Jul 2024 20:46:07 +0200
+
 ndctl (77-2) unstable; urgency=medium
 
   * Upload to unstable.
