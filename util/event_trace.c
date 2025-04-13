@@ -15,6 +15,43 @@
 #define _GNU_SOURCE
 #include <string.h>
 
+u64 trace_get_field_u64(struct tep_event *event, struct tep_record *record,
+			const char *name)
+{
+	unsigned long long val;
+
+	if (tep_get_field_val(NULL, event, name, record, &val, 0))
+		return ULLONG_MAX;
+
+	return val;
+}
+
+u32 trace_get_field_u32(struct tep_event *event, struct tep_record *record,
+			const char *name)
+{
+	char *val;
+	int len;
+
+	val = tep_get_field_raw(NULL, event, name, record, &len, 0);
+	if (!val)
+		return UINT_MAX;
+
+	return *(u32 *)val;
+}
+
+u8 trace_get_field_u8(struct tep_event *event, struct tep_record *record,
+		      const char *name)
+{
+	char *val;
+	int len;
+
+	val = tep_get_field_raw(NULL, event, name, record, &len, 0);
+	if (!val)
+		return UCHAR_MAX;
+
+	return *(u8 *)val;
+}
+
 static struct json_object *num_to_json(void *num, int elem_size, unsigned long flags)
 {
 	bool sign = flags & TEP_FIELD_IS_SIGNED;
@@ -59,8 +96,8 @@ static struct json_object *num_to_json(void *num, int elem_size, unsigned long f
 	return json_object_new_int64(val);
 }
 
-static int cxl_event_to_json(struct tep_event *event, struct tep_record *record,
-			     struct list_head *jlist_head)
+static int event_to_json(struct tep_event *event, struct tep_record *record,
+			 struct event_ctx *ctx)
 {
 	struct json_object *jevent, *jobj, *jarray;
 	struct tep_format_field **fields;
@@ -109,7 +146,13 @@ static int cxl_event_to_json(struct tep_event *event, struct tep_record *record,
 		struct tep_format_field *f = fields[i];
 		int len;
 
-		if (f->flags & TEP_FIELD_IS_STRING) {
+		/*
+		 * libtraceevent differentiates arrays and strings like this:
+		 * array:  TEP_FIELD_IS_[ARRAY | STRING]
+		 * string: TEP_FIELD_IS_[ARRAY | STRING | DYNAMIC]
+		 */
+		if ((f->flags & TEP_FIELD_IS_STRING) &&
+		    ((f->flags & TEP_FIELD_IS_DYNAMIC))) {
 			char *str;
 
 			str = tep_get_field_raw(NULL, event, f->name, record, &len, 0);
@@ -184,7 +227,7 @@ static int cxl_event_to_json(struct tep_event *event, struct tep_record *record,
 		}
 	}
 
-	list_add_tail(jlist_head, &jnode->list);
+	list_add_tail(&ctx->jlist_head, &jnode->list);
 	return 0;
 
 err_jevent:
@@ -194,8 +237,8 @@ err_jnode:
 	return rc;
 }
 
-static int cxl_event_parse(struct tep_event *event, struct tep_record *record,
-			   int cpu, void *ctx)
+static int event_parse(struct tep_event *event, struct tep_record *record,
+		       int cpu, void *ctx)
 {
 	struct event_ctx *event_ctx = (struct event_ctx *)ctx;
 
@@ -208,14 +251,18 @@ static int cxl_event_parse(struct tep_event *event, struct tep_record *record,
 			return 0;
 	}
 
-	if (event_ctx->parse_event)
-		return event_ctx->parse_event(event, record,
-					      &event_ctx->jlist_head);
+	if (event_ctx->event_pid) {
+		if (event_ctx->event_pid != tep_data_pid(event->tep, record))
+			return 0;
+	}
 
-	return cxl_event_to_json(event, record, &event_ctx->jlist_head);
+	if (event_ctx->parse_event)
+		return event_ctx->parse_event(event, record, event_ctx);
+
+	return event_to_json(event, record, event_ctx);
 }
 
-int cxl_parse_events(struct tracefs_instance *inst, struct event_ctx *ectx)
+int trace_event_parse(struct tracefs_instance *inst, struct event_ctx *ectx)
 {
 	struct tep_handle *tep;
 	int rc;
@@ -224,14 +271,13 @@ int cxl_parse_events(struct tracefs_instance *inst, struct event_ctx *ectx)
 	if (!tep)
 		return -ENOMEM;
 
-	rc = tracefs_iterate_raw_events(tep, inst, NULL, 0, cxl_event_parse,
-					ectx);
+	rc = tracefs_iterate_raw_events(tep, inst, NULL, 0, event_parse, ectx);
 	tep_free(tep);
 	return rc;
 }
 
-int cxl_event_tracing_enable(struct tracefs_instance *inst, const char *system,
-		const char *event)
+int trace_event_enable(struct tracefs_instance *inst, const char *system,
+		       const char *event)
 {
 	int rc;
 
@@ -246,7 +292,7 @@ int cxl_event_tracing_enable(struct tracefs_instance *inst, const char *system,
 	return 0;
 }
 
-int cxl_event_tracing_disable(struct tracefs_instance *inst)
+int trace_event_disable(struct tracefs_instance *inst)
 {
 	return tracefs_trace_off(inst);
 }

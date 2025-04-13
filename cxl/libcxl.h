@@ -33,6 +33,31 @@ void *cxl_get_userdata(struct cxl_ctx *ctx);
 void cxl_set_private_data(struct cxl_ctx *ctx, void *data);
 void *cxl_get_private_data(struct cxl_ctx *ctx);
 
+enum cxl_fwl_status {
+	CXL_FWL_STATUS_UNKNOWN,
+	CXL_FWL_STATUS_IDLE,
+	CXL_FWL_STATUS_RECEIVING,
+	CXL_FWL_STATUS_PREPARING,
+	CXL_FWL_STATUS_TRANSFERRING,
+	CXL_FWL_STATUS_PROGRAMMING,
+};
+
+static inline enum cxl_fwl_status cxl_fwl_status_from_ident(char *status)
+{
+	if (strcmp(status, "idle") == 0)
+		return CXL_FWL_STATUS_IDLE;
+	if (strcmp(status, "receiving") == 0)
+		return CXL_FWL_STATUS_RECEIVING;
+	if (strcmp(status, "preparing") == 0)
+		return CXL_FWL_STATUS_PREPARING;
+	if (strcmp(status, "transferring") == 0)
+		return CXL_FWL_STATUS_TRANSFERRING;
+	if (strcmp(status, "programming") == 0)
+		return CXL_FWL_STATUS_PROGRAMMING;
+
+	return CXL_FWL_STATUS_UNKNOWN;
+}
+
 struct cxl_memdev;
 struct cxl_memdev *cxl_memdev_get_first(struct cxl_ctx *ctx);
 struct cxl_memdev *cxl_memdev_get_next(struct cxl_memdev *memdev);
@@ -47,7 +72,14 @@ int cxl_memdev_get_minor(struct cxl_memdev *memdev);
 struct cxl_ctx *cxl_memdev_get_ctx(struct cxl_memdev *memdev);
 unsigned long long cxl_memdev_get_pmem_size(struct cxl_memdev *memdev);
 unsigned long long cxl_memdev_get_ram_size(struct cxl_memdev *memdev);
+int cxl_memdev_get_pmem_qos_class(struct cxl_memdev *memdev);
+int cxl_memdev_get_ram_qos_class(struct cxl_memdev *memdev);
 const char *cxl_memdev_get_firmware_verison(struct cxl_memdev *memdev);
+bool cxl_memdev_fw_update_in_progress(struct cxl_memdev *memdev);
+size_t cxl_memdev_fw_update_get_remaining(struct cxl_memdev *memdev);
+int cxl_memdev_update_fw(struct cxl_memdev *memdev, const char *fw_path);
+int cxl_memdev_cancel_fw_update(struct cxl_memdev *memdev);
+int cxl_memdev_wait_sanitize(struct cxl_memdev *memdev, int timeout_ms);
 
 /* ABI spelling mistakes are forever */
 static inline const char *cxl_memdev_get_firmware_version(
@@ -68,6 +100,13 @@ int cxl_memdev_read_label(struct cxl_memdev *memdev, void *buf, size_t length,
 		size_t offset);
 int cxl_memdev_write_label(struct cxl_memdev *memdev, void *buf, size_t length,
 		size_t offset);
+struct cxl_cmd *cxl_cmd_new_get_fw_info(struct cxl_memdev *memdev);
+unsigned int cxl_cmd_fw_info_get_num_slots(struct cxl_cmd *cmd);
+unsigned int cxl_cmd_fw_info_get_active_slot(struct cxl_cmd *cmd);
+unsigned int cxl_cmd_fw_info_get_staged_slot(struct cxl_cmd *cmd);
+bool cxl_cmd_fw_info_get_online_activate_capable(struct cxl_cmd *cmd);
+int cxl_cmd_fw_info_get_fw_ver(struct cxl_cmd *cmd, int slot, char *buf,
+			       unsigned int len);
 
 #define cxl_memdev_foreach(ctx, memdev) \
         for (memdev = cxl_memdev_get_first(ctx); \
@@ -109,6 +148,7 @@ bool cxl_port_hosts_memdev(struct cxl_port *port, struct cxl_memdev *memdev);
 int cxl_port_get_nr_dports(struct cxl_port *port);
 int cxl_port_disable_invalidate(struct cxl_port *port);
 int cxl_port_enable(struct cxl_port *port);
+int cxl_port_decoders_committed(struct cxl_port *port);
 struct cxl_port *cxl_port_get_next_all(struct cxl_port *port,
 				       const struct cxl_port *top);
 
@@ -136,6 +176,8 @@ struct cxl_dport *cxl_port_get_dport_by_memdev(struct cxl_port *port,
 	for (dport = cxl_dport_get_first(port); dport != NULL;                 \
 	     dport = cxl_dport_get_next(dport))
 
+#define CXL_QOS_CLASS_NONE		-1
+
 struct cxl_decoder;
 struct cxl_decoder *cxl_decoder_get_first(struct cxl_port *port);
 struct cxl_decoder *cxl_decoder_get_next(struct cxl_decoder *decoder);
@@ -147,6 +189,7 @@ unsigned long long cxl_decoder_get_dpa_resource(struct cxl_decoder *decoder);
 unsigned long long cxl_decoder_get_dpa_size(struct cxl_decoder *decoder);
 unsigned long long
 cxl_decoder_get_max_available_extent(struct cxl_decoder *decoder);
+int cxl_root_decoder_get_qos_class(struct cxl_decoder *decoder);
 
 enum cxl_decoder_mode {
 	CXL_DECODER_MODE_NONE,
@@ -293,6 +336,7 @@ int cxl_region_clear_target(struct cxl_region *region, int position);
 int cxl_region_clear_all_targets(struct cxl_region *region);
 int cxl_region_decode_commit(struct cxl_region *region);
 int cxl_region_decode_reset(struct cxl_region *region);
+bool cxl_region_qos_class_mismatch(struct cxl_region *region);
 
 #define cxl_region_foreach(decoder, region)                                    \
 	for (region = cxl_region_get_first(decoder); region != NULL;           \
@@ -310,7 +354,6 @@ struct cxl_memdev_mapping *cxl_mapping_get_first(struct cxl_region *region);
 struct cxl_memdev_mapping *
 cxl_mapping_get_next(struct cxl_memdev_mapping *mapping);
 struct cxl_decoder *cxl_mapping_get_decoder(struct cxl_memdev_mapping *mapping);
-struct cxl_region *cxl_mapping_get_region(struct cxl_memdev_mapping *mapping);
 unsigned int cxl_mapping_get_position(struct cxl_memdev_mapping *mapping);
 
 #define cxl_mapping_foreach(region, mapping) \
@@ -424,6 +467,24 @@ enum cxl_setpartition_mode {
 
 int cxl_cmd_partition_set_mode(struct cxl_cmd *cmd,
 		enum cxl_setpartition_mode mode);
+int cxl_memdev_trigger_poison_list(struct cxl_memdev *memdev);
+int cxl_region_trigger_poison_list(struct cxl_region *region);
+
+int cxl_cmd_alert_config_set_life_used_prog_warn_threshold(struct cxl_cmd *cmd,
+							   int threshold);
+int cxl_cmd_alert_config_set_dev_over_temperature_prog_warn_threshold(
+	struct cxl_cmd *cmd, int threshold);
+int cxl_cmd_alert_config_set_dev_under_temperature_prog_warn_threshold(
+	struct cxl_cmd *cmd, int threshold);
+int cxl_cmd_alert_config_set_corrected_volatile_mem_err_prog_warn_threshold(
+	struct cxl_cmd *cmd, int threshold);
+int cxl_cmd_alert_config_set_corrected_pmem_err_prog_warn_threshold(
+	struct cxl_cmd *cmd, int threshold);
+int cxl_cmd_alert_config_set_valid_alert_actions(struct cxl_cmd *cmd,
+						 int action);
+int cxl_cmd_alert_config_set_enable_alert_actions(struct cxl_cmd *cmd,
+						  int enable);
+struct cxl_cmd *cxl_cmd_new_set_alert_config(struct cxl_memdev *memdev);
 
 #ifdef __cplusplus
 } /* extern "C" */

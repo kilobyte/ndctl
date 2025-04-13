@@ -9,6 +9,7 @@
 #include <ccan/endian/endian.h>
 #include <ccan/short_types/short_types.h>
 #include <util/size.h>
+#include <util/bitmap.h>
 
 #define CXL_EXPORT __attribute__ ((visibility("default")))
 
@@ -17,6 +18,20 @@ struct cxl_pmem {
 	void *dev_buf;
 	size_t buf_len;
 	char *dev_path;
+};
+
+struct cxl_fw_loader {
+	char *dev_path;
+	char *loading;
+	char *data;
+	char *remaining;
+	char *cancel;
+	char *status;
+};
+
+enum cxl_fwl_loading {
+	CXL_FWL_LOADING_END = 0,
+	CXL_FWL_LOADING_START,
 };
 
 struct cxl_endpoint;
@@ -32,12 +47,15 @@ struct cxl_memdev {
 	struct list_node list;
 	unsigned long long pmem_size;
 	unsigned long long ram_size;
+	int ram_qos_class;
+	int pmem_qos_class;
 	int payload_max;
 	size_t lsa_size;
 	struct kmod_module *module;
 	struct cxl_pmem *pmem;
 	unsigned long long serial;
 	struct cxl_endpoint *endpoint;
+	struct cxl_fw_loader *fwl;
 };
 
 struct cxl_dport {
@@ -71,6 +89,7 @@ struct cxl_port {
 	int dports_init;
 	int nr_dports;
 	int depth;
+	int decoders_committed;
 	struct cxl_ctx *ctx;
 	struct cxl_bus *bus;
 	enum cxl_port_type type;
@@ -128,6 +147,7 @@ struct cxl_decoder {
 	struct list_head targets;
 	struct list_head regions;
 	struct list_head stale_regions;
+	int qos_class;
 };
 
 enum cxl_decode_state {
@@ -235,6 +255,26 @@ struct cxl_cmd_get_health_info {
 	le32 pmem_errors;
 } __attribute__((packed));
 
+/* CXL 3.0 8.2.9.3.1 Get Firmware Info */
+struct cxl_cmd_get_fw_info {
+	u8 num_slots;
+	u8 slot_info;
+	u8 activation_cap;
+	u8 reserved[13];
+	char slot_1_revision[0x10];
+	char slot_2_revision[0x10];
+	char slot_3_revision[0x10];
+	char slot_4_revision[0x10];
+} __attribute__((packed));
+
+#define CXL_FW_INFO_CUR_SLOT_MASK	GENMASK(2, 0)
+#define CXL_FW_INFO_NEXT_SLOT_MASK	GENMASK(5, 3)
+#define CXL_FW_INFO_NEXT_SLOT_SHIFT	(3)
+#define CXL_FW_INFO_HAS_LIVE_ACTIVATE	BIT(0)
+
+#define CXL_FW_VERSION_STR_LEN		16
+#define CXL_FW_MAX_SLOTS		4
+
 /* CXL 3.0 8.2.9.8.3.2 Get Alert Configuration */
 struct cxl_cmd_get_alert_config {
 	u8 valid_alerts;
@@ -272,6 +312,18 @@ struct cxl_cmd_get_alert_config {
 	BIT(3)
 #define CXL_CMD_ALERT_CONFIG_PROG_ALERTS_CORRECTED_PMEM_ERR_PROG_WARN_THRESHOLD_MASK \
 	BIT(4)
+
+/* CXL 3.0 8.2.9.8.3.3 Set Alert Configuration */
+struct cxl_cmd_set_alert_config {
+	u8 valid_alert_actions;
+	u8 enable_alert_actions;
+	u8 life_used_prog_warn_threshold;
+	u8 rsvd;
+	le16 dev_over_temperature_prog_warn_threshold;
+	le16 dev_under_temperature_prog_warn_threshold;
+	le16 corrected_volatile_mem_err_prog_warn_threshold;
+	le16 corrected_pmem_err_prog_warn_threshold;
+} __attribute__((packed));
 
 struct cxl_cmd_get_partition {
 	le64 active_volatile;

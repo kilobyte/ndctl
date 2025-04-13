@@ -1,16 +1,111 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (C) 2015-2021 Intel Corporation. All rights reserved.
 #include <limits.h>
+#include <errno.h>
 #include <util/json.h>
+#include <util/bitmap.h>
 #include <uuid/uuid.h>
 #include <cxl/libcxl.h>
 #include <json-c/json.h>
 #include <json-c/printbuf.h>
 #include <ccan/short_types/short_types.h>
+#include <tracefs.h>
 
 #include "filter.h"
 #include "json.h"
 #include "../daxctl/json.h"
+#include "../util/event_trace.h"
+
+#define CXL_FW_VERSION_STR_LEN	16
+#define CXL_FW_MAX_SLOTS	4
+
+static struct json_object *util_cxl_memdev_fw_to_json(
+		struct cxl_memdev *memdev, unsigned long flags)
+{
+	struct json_object *jobj;
+	struct json_object *jfw;
+	u32 field, num_slots;
+	struct cxl_cmd *cmd;
+	size_t remaining;
+	int rc, i;
+
+	jfw = json_object_new_object();
+	if (!jfw)
+		return NULL;
+	if (!memdev)
+		goto err_jobj;
+
+	cmd = cxl_cmd_new_get_fw_info(memdev);
+	if (!cmd)
+		goto err_jobj;
+
+	rc = cxl_cmd_submit(cmd);
+	if (rc < 0)
+		goto err_cmd;
+	rc = cxl_cmd_get_mbox_status(cmd);
+	if (rc != 0)
+		goto err_cmd;
+
+	/* fw_info fields */
+	num_slots = cxl_cmd_fw_info_get_num_slots(cmd);
+	jobj = json_object_new_int(num_slots);
+	if (jobj)
+		json_object_object_add(jfw, "num_slots", jobj);
+
+	field = cxl_cmd_fw_info_get_active_slot(cmd);
+	jobj = json_object_new_int(field);
+	if (jobj)
+		json_object_object_add(jfw, "active_slot", jobj);
+
+	field = cxl_cmd_fw_info_get_staged_slot(cmd);
+	if (field > 0 && field <= num_slots) {
+		jobj = json_object_new_int(field);
+		if (jobj)
+			json_object_object_add(jfw, "staged_slot", jobj);
+	}
+
+	rc = cxl_cmd_fw_info_get_online_activate_capable(cmd);
+	jobj = json_object_new_boolean(rc);
+	if (jobj)
+		json_object_object_add(jfw, "online_activate_capable", jobj);
+
+	for (i = 1; i <= CXL_FW_MAX_SLOTS; i++) {
+		char fw_ver[CXL_FW_VERSION_STR_LEN + 1];
+		char jkey[16];
+
+		rc = cxl_cmd_fw_info_get_fw_ver(cmd, i, fw_ver,
+						CXL_FW_VERSION_STR_LEN);
+		if (rc)
+			continue;
+		fw_ver[CXL_FW_VERSION_STR_LEN] = 0;
+		snprintf(jkey, 16, "slot_%d_version", i);
+		jobj = json_object_new_string(fw_ver);
+		if (jobj)
+			json_object_object_add(jfw, jkey, jobj);
+	}
+
+	rc = cxl_memdev_fw_update_in_progress(memdev);
+	jobj = json_object_new_boolean(rc);
+	if (jobj)
+		json_object_object_add(jfw, "fw_update_in_progress", jobj);
+
+	if (rc == true) {
+		remaining = cxl_memdev_fw_update_get_remaining(memdev);
+		jobj = util_json_object_size(remaining, flags);
+		if (jobj)
+			json_object_object_add(jfw, "remaining_size", jobj);
+	}
+
+	cxl_cmd_unref(cmd);
+	return jfw;
+
+err_cmd:
+	cxl_cmd_unref(cmd);
+err_jobj:
+	json_object_put(jfw);
+	return NULL;
+
+}
 
 static struct json_object *util_cxl_memdev_health_to_json(
 		struct cxl_memdev *memdev, unsigned long flags)
@@ -480,13 +575,194 @@ err_jobj:
 	return NULL;
 }
 
+/* CXL Spec 3.1 Table 8-140 Media Error Record */
+#define CXL_POISON_SOURCE_MAX 7
+static const char *const poison_source[] = { "Unknown", "External", "Internal",
+					     "Injected", "Reserved", "Reserved",
+					     "Reserved", "Vendor Specific" };
+
+/* CXL Spec 3.1 Table 8-139 Get Poison List Output Payload */
+#define CXL_POISON_FLAG_MORE BIT(0)
+#define CXL_POISON_FLAG_OVERFLOW BIT(1)
+#define CXL_POISON_FLAG_SCANNING BIT(2)
+
+static int poison_event_to_json(struct tep_event *event,
+				struct tep_record *record,
+				struct event_ctx *e_ctx)
+{
+	struct cxl_poison_ctx *p_ctx = e_ctx->poison_ctx;
+	struct json_object *jp, *jobj, *jpoison = p_ctx->jpoison;
+	struct cxl_memdev *memdev = p_ctx->memdev;
+	struct cxl_region *region = p_ctx->region;
+	unsigned long flags = e_ctx->json_flags;
+	const char *region_name = NULL;
+	char flag_str[32] = { '\0' };
+	bool overflow = false;
+	u8 source, pflags;
+	u64 offset, ts;
+	u32 length;
+	char *str;
+	int len;
+
+	jp = json_object_new_object();
+	if (!jp)
+		return -ENOMEM;
+
+	/* Skip records not in this region when listing by region */
+	if (region)
+		region_name = cxl_region_get_devname(region);
+	if (region_name)
+		str = tep_get_field_raw(NULL, event, "region", record, &len, 0);
+	if ((region_name) && (strcmp(region_name, str) != 0)) {
+		json_object_put(jp);
+		return 0;
+	}
+	/* Include offset,length by region (hpa) or by memdev (dpa) */
+	if (region) {
+		offset = trace_get_field_u64(event, record, "hpa");
+		if (offset != ULLONG_MAX) {
+			offset = offset - cxl_region_get_resource(region);
+			jobj = util_json_object_hex(offset, flags);
+			if (jobj)
+				json_object_object_add(jp, "offset", jobj);
+		}
+	} else if (memdev) {
+		offset = trace_get_field_u64(event, record, "dpa");
+		if (offset != ULLONG_MAX) {
+			jobj = util_json_object_hex(offset, flags);
+			if (jobj)
+				json_object_object_add(jp, "offset", jobj);
+		}
+	}
+	length = trace_get_field_u32(event, record, "dpa_length");
+	jobj = util_json_object_size(length, flags);
+	if (jobj)
+		json_object_object_add(jp, "length", jobj);
+
+	/* Always include the poison source */
+	source = trace_get_field_u8(event, record, "source");
+	if (source <= CXL_POISON_SOURCE_MAX)
+		jobj = json_object_new_string(poison_source[source]);
+	else
+		jobj = json_object_new_string("Reserved");
+	if (jobj)
+		json_object_object_add(jp, "source", jobj);
+
+	/* Include flags and overflow time if present */
+	pflags = trace_get_field_u8(event, record, "flags");
+	if (pflags && pflags < UCHAR_MAX) {
+		if (pflags & CXL_POISON_FLAG_MORE)
+			strcat(flag_str, "More,");
+		if (pflags & CXL_POISON_FLAG_SCANNING)
+			strcat(flag_str, "Scanning,");
+		if (pflags & CXL_POISON_FLAG_OVERFLOW) {
+			strcat(flag_str, "Overflow,");
+			overflow = true;
+		}
+		jobj = json_object_new_string(flag_str);
+		if (jobj)
+			json_object_object_add(jp, "flags", jobj);
+	}
+	if (overflow) {
+		ts = trace_get_field_u64(event, record, "overflow_ts");
+		jobj = util_json_object_hex(ts, flags);
+		if (jobj)
+			json_object_object_add(jp, "overflow_t", jobj);
+	}
+	json_object_array_add(jpoison, jp);
+
+	return 0;
+}
+
+static struct json_object *
+util_cxl_poison_events_to_json(struct tracefs_instance *inst,
+			       struct cxl_poison_ctx *p_ctx,
+			       unsigned long flags)
+{
+	struct event_ctx ectx = {
+		.event_name = "cxl_poison",
+		.event_pid = getpid(),
+		.system = "cxl",
+		.poison_ctx = p_ctx,
+		.json_flags = flags,
+		.parse_event = poison_event_to_json,
+	};
+	int rc;
+
+	p_ctx->jpoison = json_object_new_array();
+	if (!p_ctx->jpoison)
+		return NULL;
+
+	rc = trace_event_parse(inst, &ectx);
+	if (rc < 0) {
+		fprintf(stderr, "Failed to parse events: %d\n", rc);
+		goto put_jobj;
+	}
+	if (json_object_array_length(p_ctx->jpoison) == 0)
+		goto put_jobj;
+
+	return p_ctx->jpoison;
+
+put_jobj:
+	json_object_put(p_ctx->jpoison);
+	return NULL;
+}
+
+static struct json_object *
+util_cxl_poison_list_to_json(struct cxl_region *region,
+			     struct cxl_memdev *memdev,
+			     unsigned long flags)
+{
+	struct json_object *jpoison = NULL;
+	struct cxl_poison_ctx p_ctx;
+	struct tracefs_instance *inst;
+	int rc;
+
+	inst = tracefs_instance_create("cxl list");
+	if (!inst) {
+		fprintf(stderr, "tracefs_instance_create() failed\n");
+		return NULL;
+	}
+
+	rc = trace_event_enable(inst, "cxl", "cxl_poison");
+	if (rc < 0) {
+		fprintf(stderr, "Failed to enable trace: %d\n", rc);
+		goto err_free;
+	}
+
+	if (region)
+		rc = cxl_region_trigger_poison_list(region);
+	else
+		rc = cxl_memdev_trigger_poison_list(memdev);
+	if (rc)
+		goto err_free;
+
+	rc = trace_event_disable(inst);
+	if (rc < 0) {
+		fprintf(stderr, "Failed to disable trace: %d\n", rc);
+		goto err_free;
+	}
+
+	p_ctx = (struct cxl_poison_ctx){
+		.region = region,
+		.memdev = memdev,
+	};
+	jpoison = util_cxl_poison_events_to_json(inst, &p_ctx, flags);
+
+err_free:
+	tracefs_instance_free(inst);
+	return jpoison;
+}
+
 struct json_object *util_cxl_memdev_to_json(struct cxl_memdev *memdev,
 		unsigned long flags)
 {
 	const char *devname = cxl_memdev_get_devname(memdev);
 	struct json_object *jdev, *jobj;
 	unsigned long long serial, size;
+	const char *fw_version;
 	int numa_node;
+	int qos_class;
 
 	jdev = json_object_new_object();
 	if (!jdev)
@@ -501,6 +777,13 @@ struct json_object *util_cxl_memdev_to_json(struct cxl_memdev *memdev,
 		jobj = util_json_object_size(size, flags);
 		if (jobj)
 			json_object_object_add(jdev, "pmem_size", jobj);
+
+		qos_class = cxl_memdev_get_pmem_qos_class(memdev);
+		if (qos_class != CXL_QOS_CLASS_NONE) {
+			jobj = json_object_new_int(qos_class);
+			if (jobj)
+				json_object_object_add(jdev, "pmem_qos_class", jobj);
+		}
 	}
 
 	size = cxl_memdev_get_ram_size(memdev);
@@ -508,6 +791,13 @@ struct json_object *util_cxl_memdev_to_json(struct cxl_memdev *memdev,
 		jobj = util_json_object_size(size, flags);
 		if (jobj)
 			json_object_object_add(jdev, "ram_size", jobj);
+
+		qos_class = cxl_memdev_get_ram_qos_class(memdev);
+		if (qos_class != CXL_QOS_CLASS_NONE) {
+			jobj = json_object_new_int(qos_class);
+			if (jobj)
+				json_object_object_add(jdev, "ram_qos_class", jobj);
+		}
 	}
 
 	if (flags & UTIL_JSON_HEALTH) {
@@ -540,6 +830,13 @@ struct json_object *util_cxl_memdev_to_json(struct cxl_memdev *memdev,
 	if (jobj)
 		json_object_object_add(jdev, "host", jobj);
 
+	fw_version = cxl_memdev_get_firmware_version(memdev);
+	if (fw_version) {
+		jobj = json_object_new_string(fw_version);
+		if (jobj)
+			json_object_object_add(jdev, "firmware_version", jobj);
+	}
+
 	if (!cxl_memdev_is_enabled(memdev)) {
 		jobj = json_object_new_string("disabled");
 		if (jobj)
@@ -550,6 +847,18 @@ struct json_object *util_cxl_memdev_to_json(struct cxl_memdev *memdev,
 		jobj = util_cxl_memdev_partition_to_json(memdev, flags);
 		if (jobj)
 			json_object_object_add(jdev, "partition_info", jobj);
+	}
+
+	if (flags & UTIL_JSON_FIRMWARE) {
+		jobj = util_cxl_memdev_fw_to_json(memdev, flags);
+		if (jobj)
+			json_object_object_add(jdev, "firmware", jobj);
+	}
+
+	if (flags & UTIL_JSON_MEDIA_ERRORS) {
+		jobj = util_cxl_poison_list_to_json(NULL, memdev, flags);
+		if (jobj)
+			json_object_object_add(jdev, "media_errors", jobj);
 	}
 
 	json_object_set_userdata(jdev, memdev, NULL);
@@ -760,6 +1069,16 @@ struct json_object *util_cxl_decoder_to_json(struct cxl_decoder *decoder,
 					       jobj);
 	}
 
+	if (cxl_port_is_root(port)) {
+		int qos_class = cxl_root_decoder_get_qos_class(decoder);
+
+		if (qos_class != CXL_QOS_CLASS_NONE) {
+			jobj = json_object_new_int(qos_class);
+			if (jobj)
+				json_object_object_add(jdecoder, "qos_class", jobj);
+		}
+	}
+
 	json_object_set_userdata(jdecoder, decoder, NULL);
 	return jdecoder;
 }
@@ -890,6 +1209,12 @@ struct json_object *util_cxl_region_to_json(struct cxl_region *region,
 			json_object_object_add(jregion, "state", jobj);
 	}
 
+	if (flags & UTIL_JSON_MEDIA_ERRORS) {
+		jobj = util_cxl_poison_list_to_json(region, NULL, flags);
+		if (jobj)
+			json_object_object_add(jregion, "media_errors", jobj);
+	}
+
 	util_cxl_mappings_append_json(jregion, region, flags);
 
 	if (flags & UTIL_JSON_DAX) {
@@ -903,6 +1228,12 @@ struct json_object *util_cxl_region_to_json(struct cxl_region *region,
 				json_object_object_add(jregion, "daxregion",
 						       jobj);
 		}
+	}
+
+	if (cxl_region_qos_class_mismatch(region)) {
+		jobj = json_object_new_boolean(true);
+		if (jobj)
+			json_object_object_add(jregion, "qos_class_mismatch", jobj);
 	}
 
 	json_object_set_userdata(jregion, region, NULL);
@@ -1022,6 +1353,10 @@ static struct json_object *__util_cxl_port_to_json(struct cxl_port *port,
 		if (jobj)
 			json_object_object_add(jport, "state", jobj);
 	}
+
+	jobj = json_object_new_int(cxl_port_decoders_committed(port));
+	if (jobj)
+		json_object_object_add(jport, "decoders_committed", jobj);
 
 	json_object_set_userdata(jport, port, NULL);
 	return jport;

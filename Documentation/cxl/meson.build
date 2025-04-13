@@ -25,6 +25,7 @@ filedeps = [
   'debug-option.txt',
   'region-description.txt',
   'decoder-option.txt',
+  'xable-no-op.txt',
 ]
 
 cxl_manpages = [
@@ -46,6 +47,9 @@ cxl_manpages = [
   'cxl-enable-region.txt',
   'cxl-destroy-region.txt',
   'cxl-monitor.txt',
+  'cxl-update-firmware.txt',
+  'cxl-set-alert-config.txt',
+  'cxl-wait-sanitize.txt',
 ]
 
 foreach man : cxl_manpages

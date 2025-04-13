@@ -1,2 +1,2 @@
-ACTION=="add", SUBSYSTEM=="dax",\
+ACTION=="add", SUBSYSTEM=="dax", \
   RUN+="/usr/bin/daxctl -C $env{DEVNAME}"

@@ -27,8 +27,10 @@ struct cxl_filter_params {
 	bool human;
 	bool health;
 	bool partition;
+	bool fw;
 	bool alert_config;
 	bool dax;
+	bool media_errors;
 	int verbose;
 	struct log_ctx ctx;
 };
@@ -36,6 +38,8 @@ struct cxl_filter_params {
 struct cxl_memdev *util_cxl_memdev_filter(struct cxl_memdev *memdev,
 					  const char *__ident,
 					  const char *serials);
+struct cxl_memdev *util_cxl_memdev_filter_by_bus(struct cxl_memdev *memdev,
+						 const char *__ident);
 struct cxl_port *util_cxl_port_filter_by_memdev(struct cxl_port *port,
 						const char *ident,
 						const char *serial);
@@ -79,10 +83,14 @@ static inline unsigned long cxl_filter_to_flags(struct cxl_filter_params *param)
 		flags |= UTIL_JSON_TARGETS;
 	if (param->partition)
 		flags |= UTIL_JSON_PARTITION;
+	if (param->fw)
+		flags |= UTIL_JSON_FIRMWARE;
 	if (param->alert_config)
 		flags |= UTIL_JSON_ALERT_CONFIG;
 	if (param->dax)
 		flags |= UTIL_JSON_DAX | UTIL_JSON_DAX_DEVS;
+	if (param->media_errors)
+		flags |= UTIL_JSON_MEDIA_ERRORS;
 	return flags;
 }
 

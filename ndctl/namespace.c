@@ -868,6 +868,13 @@ static int validate_namespace_options(struct ndctl_region *region,
 
 		p->size /= size_align;
 		p->size++;
+
+		if (p->size > ULLONG_MAX / size_align) {
+			err("size overflow: %llu * %llu exceeds ULLONG_MAX\n",
+			    p->size, size_align);
+			return -EINVAL;
+		}
+
 		p->size *= size_align;
 		p->size /= units;
 		err("'--size=' must align to interleave-width: %d and alignment: %ld\n"
@@ -1866,6 +1873,10 @@ static int write_pfn_sb(int fd, unsigned long long size, const char *sig,
 	int rc;
 
 	start = parse_size64(param.offset);
+	if (start == ULLONG_MAX) {
+		err("failed to parse offset option '%s'\n", param.offset);
+		return -EINVAL;
+	}
 	npfns = PHYS_PFN(size - SZ_8K);
 	pfn_align = parse_size64(param.align);
 	align = max(pfn_align, SUBSECTION_SIZE);
@@ -1907,6 +1918,10 @@ static int write_pfn_sb(int fd, unsigned long long size, const char *sig,
 		 * struct page size. But we also want to make sure we notice
 		 * when we end up adding new elements to struct page.
 		 */
+		if (start > ULLONG_MAX - (SZ_8K + MAX_STRUCT_PAGE_SIZE * npfns)) {
+			error("integer overflow in offset calculation\n");
+			return -EINVAL;
+		}
 		offset = ALIGN(start + SZ_8K + MAX_STRUCT_PAGE_SIZE * npfns, align)
 			- start;
 	} else
@@ -2072,7 +2087,11 @@ static int namespace_rw_infoblock(struct ndctl_namespace *ndns,
 			unsigned long long size = parse_size64(param.size);
 			align = parse_size64(param.align);
 
-			if (align < ULLONG_MAX && !IS_ALIGNED(size, align)) {
+			if (align == 0 || align == ULLONG_MAX) {
+				error("invalid alignment:%s\n", param.align);
+				rc = -EINVAL;
+			}
+			if (!IS_ALIGNED(size, align)) {
 				error("--size=%s not aligned to %s\n", param.size,
 					param.align);
 
@@ -2127,7 +2146,7 @@ static int do_xaction_namespace(const char *namespace,
 				util_display_json_array(ri_ctx.f_out, ri_ctx.jblocks, 0);
 			if (rc >= 0)
 				(*processed)++;
-			return rc;
+			goto out_close;
 		}
 	}
 
@@ -2138,11 +2157,11 @@ static int do_xaction_namespace(const char *namespace,
 		rc = file_write_infoblock(param.outfile);
 		if (rc >= 0)
 			(*processed)++;
-		return rc;
+		goto out_close;
 	}
 
 	if (!namespace && action != ACTION_CREATE)
-		return rc;
+		goto out_close;
 
 	if (namespace && (strcmp(namespace, "all") == 0))
 		rc = 0;
@@ -2201,7 +2220,7 @@ static int do_xaction_namespace(const char *namespace,
 						saved_rc = rc;
 						continue;
 				}
-				return rc;
+				goto out_close;
 			}
 			ndctl_namespace_foreach_safe(region, ndns, _n) {
 				ndns_name = ndctl_namespace_get_devname(ndns);
@@ -2280,9 +2299,6 @@ static int do_xaction_namespace(const char *namespace,
 	if (ri_ctx.jblocks)
 		util_display_json_array(ri_ctx.f_out, ri_ctx.jblocks, 0);
 
-	if (ri_ctx.f_out && ri_ctx.f_out != stdout)
-		fclose(ri_ctx.f_out);
-
 	if (action == ACTION_CREATE && rc == -EAGAIN) {
 		/*
 		 * Namespace creation searched through all candidate
@@ -2297,6 +2313,10 @@ static int do_xaction_namespace(const char *namespace,
 		else
 			rc = -ENOSPC;
 	}
+
+out_close:
+	if (ri_ctx.f_out && ri_ctx.f_out != stdout)
+		fclose(ri_ctx.f_out);
 	if (saved_rc)
 		rc = saved_rc;
 

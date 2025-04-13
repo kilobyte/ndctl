@@ -219,6 +219,9 @@ else
 	do_skip "Missing input parameters"
 fi
 
+check_prereq "keyctl"
+check_prereq "jq"
+
 uid="$(keyctl show | grep -Eo "_uid.[0-9]+" | head -1 | cut -d. -f2-)"
 if [ "$uid" -ne 0 ]; then
 	do_skip "run as root or with a sudo login shell for test to work"
@@ -227,7 +230,6 @@ fi
 modprobe "$KMOD_TEST"
 $CXL list
 setup
-check_prereq "keyctl"
 rc=1
 detect
 test_cleanup
