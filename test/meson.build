@@ -255,6 +255,7 @@ foreach t : tests
     env : [
       'NDCTL=@0@'.format(ndctl_tool.full_path()),
       'DAXCTL=@0@'.format(daxctl_tool.full_path()),
+      'CXL=@0@'.format(cxl_tool.full_path()),
       'TEST_PATH=@0@'.format(meson.current_build_dir()),
       'DATA_PATH=@0@'.format(meson.current_source_dir()),
     ],
