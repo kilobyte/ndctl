@@ -253,6 +253,15 @@ if get_option('fwctl').enabled()
   ]
 endif
 
+test_env = [
+    'LC_ALL=C',
+    'NDCTL=@0@'.format(ndctl_tool.full_path()),
+    'DAXCTL=@0@'.format(daxctl_tool.full_path()),
+    'CXL=@0@'.format(cxl_tool.full_path()),
+    'TEST_PATH=@0@'.format(meson.current_build_dir()),
+    'DATA_PATH=@0@'.format(meson.current_source_dir()),
+]
+
 foreach t : tests
   test(t[0], t[1],
     is_parallel : false,
@@ -270,12 +279,6 @@ foreach t : tests
     ],
     suite: t[2],
     timeout : 600,
-    env : [
-      'NDCTL=@0@'.format(ndctl_tool.full_path()),
-      'DAXCTL=@0@'.format(daxctl_tool.full_path()),
-      'CXL=@0@'.format(cxl_tool.full_path()),
-      'TEST_PATH=@0@'.format(meson.current_build_dir()),
-      'DATA_PATH=@0@'.format(meson.current_source_dir()),
-    ],
+    env : test_env,
   )
 endforeach
