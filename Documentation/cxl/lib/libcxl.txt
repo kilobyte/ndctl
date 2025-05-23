@@ -42,6 +42,7 @@ struct cxl_memdev *cxl_memdev_get_next(struct cxl_memdev *memdev);
 struct cxl_ctx *cxl_memdev_get_ctx(struct cxl_memdev *memdev);
 const char *cxl_memdev_get_host(struct cxl_memdev *memdev)
 struct cxl_memdev *cxl_endpoint_get_memdev(struct cxl_endpoint *endpoint);
+struct cxl_fwctl *cxl_memdev_get_fwctl(struct cxl_memdev *memdev);
 
 #define cxl_memdev_foreach(ctx, memdev) \
         for (memdev = cxl_memdev_get_first(ctx); \
@@ -58,6 +59,11 @@ specific memdev.
 
 The host of a memdev is the PCIe Endpoint device that registered its CXL
 capabilities with the Linux CXL core.
+
+A memdev may host a 'struct cxl_fwctl' if CXL Features are supported,
+CONFIG_CXL_FEATURES is enabled, and Firmware Control (FWCTL) is also enabled.
+By default the 'fwctl' option is enabled for CXL CLI. The discovery can
+be disabled by meson build option.
 
 === MEMDEV: Attributes
 ----
@@ -184,6 +190,24 @@ responsibility to avoid immediate changes to partitioning when the
 device is in use. When CXL_SETPART_NEXTBOOT mode is set, the change
 in partitioning shall become the “next” configuration, to become
 active on the next device reset.
+
+FWCTL
+-----
+The object representing a Firmware Control (FWCTL) device is 'struct cxl_fwctl'.
+Library interfaces related to these devices have the prefix 'cxl_fwctl_'.
+These interfaces are associated with interacting with the FWCTL aspect of the
+memdev. And currently specifically with the CXL FWCTL character device that is
+a child of the memdev.
+
+=== FWCTL: Attributes
+----
+int cxl_fwctl_get_major(struct cxl_memdev *memdev);
+int cxl_fwctl_get_minor(struct cxl_memdev *memdev);
+----
+
+The character device node for Feature (firmware) control can be found by
+default at /dev/fwctl/fwctl%d, or created with a major / minor returned
+from cxl_memdev_get_fwctl_{major,minor}().
 
 BUSES
 -----

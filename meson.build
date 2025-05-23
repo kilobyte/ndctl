@@ -237,6 +237,7 @@ conf.set('ENABLE_DESTRUCTIVE', get_option('destructive').enabled())
 conf.set('ENABLE_LOGGING', get_option('logging').enabled())
 conf.set('ENABLE_DEBUG', get_option('dbg').enabled())
 conf.set('ENABLE_LIBTRACEFS', get_option('libtracefs').enabled())
+conf.set('ENABLE_FWCTL', get_option('fwctl').enabled())
 
 typeof_code = '''
   void func() {

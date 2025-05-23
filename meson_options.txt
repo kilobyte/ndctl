@@ -28,3 +28,5 @@ option('iniparserdir', type : 'string',
        description : 'Path containing the iniparser header files')
 option('modprobedatadir', type : 'string',
        description : '''${sysconfdir}/modprobe.d/''')
+option('fwctl', type : 'feature', value : 'enabled',
+       description : 'enable firmware control')

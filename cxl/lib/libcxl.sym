@@ -291,4 +291,7 @@ global:
 LIBCXL_9 {
 global:
 	cxl_bus_get_by_provider;
+	cxl_memdev_get_fwctl;
+	cxl_fwctl_get_major;
+	cxl_fwctl_get_minor;
 } LIBECXL_8;
