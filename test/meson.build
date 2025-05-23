@@ -17,6 +17,13 @@ ndctl_deps = libndctl_deps + [
   versiondep,
 ]
 
+libcxl_deps = [
+  cxl_dep,
+  ndctl_dep,
+  uuid,
+  kmod,
+]
+
 libndctl = executable('libndctl', testcore + [ 'libndctl.c'],
   dependencies : libndctl_deps,
   include_directories : root_inc,
@@ -232,6 +239,17 @@ if get_option('keyutils').enabled()
   tests += [
     [ 'nfit-security.sh', nfit_security, 'ndctl' ],
     [ 'cxl-security.sh', cxl_security, 'cxl' ],
+  ]
+endif
+
+if get_option('fwctl').enabled()
+  fwctl = executable('fwctl', 'fwctl.c',
+    dependencies : libcxl_deps,
+    include_directories : root_inc,
+  )
+  cxl_features = find_program('cxl-features.sh')
+  tests += [
+    [ 'cxl-features.sh',        cxl_features,       'cxl'   ],
   ]
 endif
 

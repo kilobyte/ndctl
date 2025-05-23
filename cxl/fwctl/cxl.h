@@ -9,7 +9,7 @@
 
 #include <linux/types.h>
 #include <linux/stddef.h>
-#include <cxl/features.h>
+#include "features.h"
 
 /**
  * struct fwctl_rpc_cxl - ioctl(FWCTL_RPC) input for CXL
