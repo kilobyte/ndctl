@@ -1,5 +1,5 @@
 project('ndctl', 'c',
-  version : '81',
+  version : '82',
   license : [
     'GPL-2.0',
     'LGPL-2.1',
@@ -306,9 +306,9 @@ LIBDAXCTL_CURRENT=7
 LIBDAXCTL_REVISION=1
 LIBDAXCTL_AGE=6
 
-LIBCXL_CURRENT=9
+LIBCXL_CURRENT=10
 LIBCXL_REVISION=0
-LIBCXL_AGE=8
+LIBCXL_AGE=9
 
 root_inc = include_directories(['.', 'ndctl', ])
 
