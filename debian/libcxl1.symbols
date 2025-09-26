@@ -7,8 +7,10 @@ libcxl.so.1 libcxl1 #MINVER#
  LIBCXL_5@LIBCXL_5 77
  LIBCXL_6@LIBCXL_6 81
  LIBCXL_7@LIBCXL_7 81
+ LIBCXL_9@LIBCXL_9 82
  LIBECXL_8@LIBECXL_8 81
  cxl_bus_disable_invalidate@LIBCXL_2 74
+ cxl_bus_get_by_provider@LIBCXL_9 82
  cxl_bus_get_ctx@LIBCXL_2 73
  cxl_bus_get_devname@LIBCXL_2 73
  cxl_bus_get_first@LIBCXL_2 73
@@ -155,6 +157,8 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_endpoint_get_parent@LIBCXL_2 73
  cxl_endpoint_get_port@LIBCXL_2 73
  cxl_endpoint_is_enabled@LIBCXL_2 73
+ cxl_fwctl_get_major@LIBCXL_9 82
+ cxl_fwctl_get_minor@LIBCXL_9 82
  cxl_get_log_priority@LIBCXL_1 72
  cxl_get_private_data@LIBCXL_1 72
  cxl_get_userdata@LIBCXL_1 72
@@ -175,6 +179,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_memdev_get_endpoint@LIBCXL_2 73
  cxl_memdev_get_firmware_verison@LIBCXL_1 72
  cxl_memdev_get_first@LIBCXL_1 72
+ cxl_memdev_get_fwctl@LIBCXL_9 82
  cxl_memdev_get_host@LIBCXL_2 73
  cxl_memdev_get_id@LIBCXL_1 72
  cxl_memdev_get_label_size@LIBCXL_1 72
@@ -188,6 +193,7 @@ libcxl.so.1 libcxl1 #MINVER#
  cxl_memdev_get_ram_size@LIBCXL_1 72
  cxl_memdev_get_serial@LIBCXL_2 73
  cxl_memdev_is_enabled@LIBCXL_2 73
+ cxl_region_qos_class_mismatch@LIBCXL_7 82
  cxl_memdev_nvdimm_bridge_active@LIBCXL_1 72
  cxl_memdev_read_label@LIBCXL_1 72
  cxl_memdev_trigger_poison_list@LIBECXL_8 81
