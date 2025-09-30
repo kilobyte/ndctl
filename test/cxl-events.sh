@@ -13,6 +13,7 @@ num_info_expected=3
 rc=77
 
 set -ex
+[ -d "/sys/kernel/tracing" ] || do_skip "test requires CONFIG_TRACING"
 
 trap 'err $LINENO' ERR
 

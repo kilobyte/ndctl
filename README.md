@@ -56,9 +56,8 @@ loaded.  To build and install nfit_test.ko:
    **or**  
    `cma=200M` on the kernel command line.  
 
-1. Compile the libnvdimm sub-system as a module, make sure "zone device"
-   memory is enabled, and enable the btt, pfn, and dax features of the
-   sub-system:  
+1. Apply the fragment below to your kernel config or use it to verify that the
+   options required to run the NDCTL unit tests are correctly enabled.
 
    ```
    CONFIG_X86_PMEM_LEGACY=m
@@ -69,10 +68,21 @@ loaded.  To build and install nfit_test.ko:
    CONFIG_NVDIMM_PFN=y
    CONFIG_NVDIMM_DAX=y
    CONFIG_DEV_DAX_PMEM=m
+   CONFIG_FS_DAX=y
+   CONFIG_EXT4_FS=m
+   CONFIG_XFS_FS=m
+   CONFIG_DAX=m
+   CONFIG_DEV_DAX=m
    CONFIG_ENCRYPTED_KEYS=y
    CONFIG_NVDIMM_SECURITY_TEST=y
    CONFIG_STRICT_DEVMEM=y
    CONFIG_IO_STRICT_DEVMEM=y
+   CONFIG_ACPI_NFIT=m
+   CONFIG_NFIT_SECURITY_DEBUG=y
+   CONFIG_MEMORY_FAILURE=y
+   CONFIG_MEMORY_HOTPLUG=y
+   CONFIG_MEMORY_HOTREMOVE=y
+   CONFIG_TRANSPARENT_HUGEPAGE=y
    ```
 
 1. Build and install the unit test enabled libnvdimm modules in the
@@ -93,17 +103,28 @@ loaded.  To build and install nfit_test.ko:
    Obtain the CXL kernel source(optional).  For example,
    `git clone -b pending git://git.kernel.org/pub/scm/linux/kernel/git/cxl/cxl.git`
 
-   Enable CXL-related kernel configuration options.
+   Apply the fragment below to your kernel config or use it to verify that the
+   options required to run the CXL unit tests are correctly enabled.
    ```
    CONFIG_CXL_BUS=m
    CONFIG_CXL_PCI=m
    CONFIG_CXL_ACPI=m
+   CONFIG_LIBNVDIMM=m
    CONFIG_CXL_PMEM=m
    CONFIG_CXL_MEM=m
    CONFIG_CXL_PORT=m
    CONFIG_CXL_REGION=y
    CONFIG_CXL_REGION_INVALIDATION_TEST=y
+   CONFIG_CXL_FEATURES=y
+   CONFIG_DAX=m
+   CONFIG_TRANSPARENT_HUGEPAGE=y
+   CONFIG_DEV_DAX=m
    CONFIG_DEV_DAX_CXL=m
+   CONFIG_MEMORY_HOTPLUG=y
+   CONFIG_MEMORY_HOTREMOVE=y
+   CONFIG_NVDIMM_SECURITY_TEST=y
+   CONFIG_ENCRYPTED_KEYS=y
+   CONFIG_NVDIMM_KEYS=y
    ```
 1. Install cxl_test and related mock modules.
    ```

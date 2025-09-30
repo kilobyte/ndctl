@@ -34,6 +34,11 @@ enum cxl_fwl_loading {
 	CXL_FWL_LOADING_START,
 };
 
+struct cxl_fwctl {
+	int major;
+	int minor;
+};
+
 struct cxl_endpoint;
 struct cxl_memdev {
 	int id, major, minor;
@@ -56,6 +61,7 @@ struct cxl_memdev {
 	unsigned long long serial;
 	struct cxl_endpoint *endpoint;
 	struct cxl_fw_loader *fwl;
+	struct cxl_fwctl *fwctl;
 };
 
 struct cxl_dport {

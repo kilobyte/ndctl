@@ -14,7 +14,6 @@ check_prereq "jq"
 
 modprobe -r cxl_test
 modprobe cxl_test interleave_arithmetic=1
-udevadm settle
 rc=1
 
 # THEORY OF OPERATION: Create x1,2,3,4 regions to exercise the XOR math

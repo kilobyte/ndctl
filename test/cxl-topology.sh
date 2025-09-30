@@ -37,15 +37,37 @@ root=$(jq -r ".[] | .bus" <<< $json)
 
 
 # validate 2 or 3 host bridges under a root port
-port_sort="sort_by(.port | .[4:] | tonumber)"
 json=$($CXL list -b cxl_test -BP)
 count=$(jq ".[] | .[\"ports:$root\"] | length" <<< $json)
 ((count == 2)) || ((count == 3)) || err "$LINENO"
 bridges=$count
 
-bridge[0]=$(jq -r ".[] | .[\"ports:$root\"] | $port_sort | .[0].port" <<< $json)
-bridge[1]=$(jq -r ".[] | .[\"ports:$root\"] | $port_sort | .[1].port" <<< $json)
-((bridges > 2)) && bridge[2]=$(jq -r ".[] | .[\"ports:$root\"] | $port_sort | .[2].port" <<< $json)
+bridge_filter()
+{
+	local br_num="$1"
+
+	jq -r \
+		--arg key "$root" \
+		--argjson br_num "$br_num" \
+		'.[] |
+		  select(has("ports:" + $key)) |
+		  .["ports:" + $key] |
+		  map(
+		    {
+		      full: .,
+		      length: (.["ports:" + .port] | length)
+		    }
+		  ) |
+		  sort_by(-.length) |
+		  map(.full) |
+		  .[$br_num].port'
+}
+
+# $count has already been sanitized for acceptable values, so
+# just collect $count bridges here.
+for i in $(seq 0 $((count - 1))); do
+	bridge[$i]="$(bridge_filter "$i" <<< "$json")"
+done
 
 # validate root ports per host bridge
 check_host_bridge()
@@ -64,6 +86,7 @@ json=$($CXL list -b cxl_test -P -p ${bridge[0]})
 count=$(jq ".[] | .[\"ports:${bridge[0]}\"] | length" <<< $json)
 ((count == 2)) || err "$LINENO"
 
+port_sort="sort_by(.port | .[4:] | tonumber)"
 switch[0]=$(jq -r ".[] | .[\"ports:${bridge[0]}\"] | $port_sort | .[0].host" <<< $json)
 switch[1]=$(jq -r ".[] | .[\"ports:${bridge[0]}\"] | $port_sort | .[1].host" <<< $json)
 

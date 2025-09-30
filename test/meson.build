@@ -17,6 +17,13 @@ ndctl_deps = libndctl_deps + [
   versiondep,
 ]
 
+libcxl_deps = [
+  cxl_dep,
+  ndctl_dep,
+  uuid,
+  kmod,
+]
+
 libndctl = executable('libndctl', testcore + [ 'libndctl.c'],
   dependencies : libndctl_deps,
   include_directories : root_inc,
@@ -235,6 +242,26 @@ if get_option('keyutils').enabled()
   ]
 endif
 
+if get_option('fwctl').enabled()
+  fwctl = executable('fwctl', 'fwctl.c',
+    dependencies : libcxl_deps,
+    include_directories : root_inc,
+  )
+  cxl_features = find_program('cxl-features.sh')
+  tests += [
+    [ 'cxl-features.sh',        cxl_features,       'cxl'   ],
+  ]
+endif
+
+test_env = [
+    'LC_ALL=C',
+    'NDCTL=@0@'.format(ndctl_tool.full_path()),
+    'DAXCTL=@0@'.format(daxctl_tool.full_path()),
+    'CXL=@0@'.format(cxl_tool.full_path()),
+    'TEST_PATH=@0@'.format(meson.current_build_dir()),
+    'DATA_PATH=@0@'.format(meson.current_source_dir()),
+]
+
 foreach t : tests
   test(t[0], t[1],
     is_parallel : false,
@@ -252,11 +279,6 @@ foreach t : tests
     ],
     suite: t[2],
     timeout : 600,
-    env : [
-      'NDCTL=@0@'.format(ndctl_tool.full_path()),
-      'DAXCTL=@0@'.format(daxctl_tool.full_path()),
-      'TEST_PATH=@0@'.format(meson.current_build_dir()),
-      'DATA_PATH=@0@'.format(meson.current_source_dir()),
-    ],
+    env : test_env,
   )
 endforeach
