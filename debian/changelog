@@ -1,3 +1,12 @@
+ndctl (82-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Update library symbols.
+  * pkg-config → pkgconf
+  * Install systemd .service files to usr/
+
+ -- Adam Borowski <kilobyte@angband.pl>  Fri, 26 Sep 2025 15:46:03 +0200
+
 ndctl (81-1) unstable; urgency=medium
 
   * New upstream release.
